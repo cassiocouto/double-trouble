@@ -108,9 +108,20 @@ def send_frame(sock: socket.socket, obj: dict, limit: int = MAX_RESPONSE_FRAME) 
     sock.sendall(data)
 
 
-def _recv_exact(sock: socket.socket, n: int) -> bytes:
+def _arm(sock: socket.socket, deadline: float | None) -> None:
+    """Com prazo total, cada recv só espera o que sobra dele (contra conexão lenta de propósito)."""
+    if deadline is None:
+        return
+    left = deadline - time.monotonic()
+    if left <= 0:
+        raise TimeoutError("prazo pra mandar a mensagem acabou")
+    sock.settimeout(left)
+
+
+def _recv_exact(sock: socket.socket, n: int, deadline: float | None = None) -> bytes:
     buf = bytearray()
     while len(buf) < n:
+        _arm(sock, deadline)
         chunk = sock.recv(min(65536, n - len(buf)))
         if not chunk:
             raise ProtocolError("conexão fechada no meio de uma mensagem" if buf else "conexão fechada")
@@ -118,14 +129,17 @@ def _recv_exact(sock: socket.socket, n: int) -> bytes:
     return bytes(buf)
 
 
-def recv_frame(sock: socket.socket, limit: int) -> dict:
-    """Lê um frame. O tamanho é conferido antes de ler o corpo (invariante 10)."""
-    (size,) = _HEADER.unpack(_recv_exact(sock, _HEADER.size))
+def recv_frame(sock: socket.socket, limit: int, deadline: float | None = None) -> dict:
+    """Lê um frame. O tamanho é conferido antes de ler o corpo (invariante 10).
+
+    Com `deadline` (time.monotonic()), o frame inteiro precisa chegar até lá.
+    """
+    (size,) = _HEADER.unpack(_recv_exact(sock, _HEADER.size, deadline))
     if size == 0:
         raise ProtocolError("frame vazio")
     if size > limit:
         raise ProtocolError(f"frame grande demais ({size} bytes, limite {limit})")
-    raw = _recv_exact(sock, size)
+    raw = _recv_exact(sock, size, deadline)
     try:
         obj = loads_strict(raw.decode("utf-8"))
     except (UnicodeDecodeError, ValueError, RecursionError) as e:
@@ -135,10 +149,11 @@ def recv_frame(sock: socket.socket, limit: int) -> dict:
     return obj
 
 
-def read_magic(sock: socket.socket) -> bytes:
-    """Lê a linha mágica byte a byte (no máximo MAX_MAGIC bytes)."""
+def read_magic(sock: socket.socket, deadline: float | None = None, size: int = MAX_MAGIC) -> bytes:
+    """Lê a linha mágica byte a byte (no máximo `size` bytes)."""
     buf = bytearray()
-    while len(buf) < MAX_MAGIC:
+    while len(buf) < size:
+        _arm(sock, deadline)
         b = sock.recv(1)
         if not b:
             break

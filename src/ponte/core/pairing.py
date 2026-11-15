@@ -67,16 +67,8 @@ def _mac(key: bytes, obj: dict) -> str:
     return hmac.new(key, protocol.canonical(obj), hashlib.sha256).hexdigest()
 
 
-def _read_magic(sock: socket.socket) -> bytes:
-    buf = bytearray()
-    while len(buf) < len(MAGIC):
-        b = sock.recv(1)
-        if not b:
-            break
-        buf += b
-        if b == b"\n":
-            break
-    return bytes(buf)
+def _read_magic(sock: socket.socket, deadline: float | None = None) -> bytes:
+    return protocol.read_magic(sock, deadline, size=len(MAGIC))
 
 
 # ==========================================================================
@@ -184,12 +176,15 @@ class PairingWindow:
             protocol.send_frame(conn, {"tipo": "erro", "erro": why})
 
     def _handle(self, conn: socket.socket, ip: str) -> PairingResult | None:
+        # Prazo total por conexão: a janela atende uma conexão por vez, então uma
+        # conexão lenta de propósito não pode segurar o pareamento.
+        deadline = time.monotonic() + CONN_TIMEOUT
         conn.settimeout(CONN_TIMEOUT)
         try:
-            if _read_magic(conn) != MAGIC:
+            if _read_magic(conn, deadline) != MAGIC:
                 return None
             conn.sendall(MAGIC)
-            hello = protocol.recv_frame(conn, MAX_FRAME)
+            hello = protocol.recv_frame(conn, MAX_FRAME, deadline)
         except (OSError, ProtocolError):
             return None
         name = hello.get("de")
@@ -215,7 +210,7 @@ class PairingWindow:
                 conn,
                 {"tipo": "ola", "de": self.cfg.name, "Y": pake.message(), "confirmacao": pake.my_confirmation()},
             )
-            proof = protocol.recv_frame(conn, MAX_FRAME)
+            proof = protocol.recv_frame(conn, MAX_FRAME, deadline)
         except (OSError, ProtocolError):
             self.failures += 1  # sumiu no meio: conta, pra ninguém ficar tentando à toa
             return None

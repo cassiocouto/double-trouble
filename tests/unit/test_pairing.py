@@ -316,3 +316,16 @@ def test_repairing_keeps_permissions(tmp_path):
     pairing.save_controller(pairing.PairingResult("controle", new_secret, "127.0.0.1"), path)
     entry = config_mod.load(path).agent.controllers["controle"]
     assert entry.secret == new_secret and entry.commands == ["status"]
+
+
+def test_slow_connection_does_not_block_window(tmp_path, monkeypatch):
+    monkeypatch.setattr(pairing, "CONN_TIMEOUT", 1.0)
+    w, t, box, _, _ = open_window(tmp_path)
+    slow = socket.create_connection(("127.0.0.1", w.port))
+    slow.sendall(pairing.MAGIC[:3])  # para no meio e fica quieto
+    t0 = time.monotonic()
+    paired = pairing.pair_with("controle", "127.0.0.1", w.port, w.code, timeout=10)
+    assert paired.name == "agente"
+    assert time.monotonic() - t0 < 5
+    slow.close()
+    t.join(5)

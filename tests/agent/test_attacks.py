@@ -864,3 +864,32 @@ def test_v2_client_against_future_server():
     threading.Thread(target=v3, daemon=True).start()
     with pytest.raises(ProtocolError, match="outra versão"):
         fake_client(srv.getsockname()[1], SECRET).ping()
+
+
+def test_inv11_slow_loris_gets_cut_by_total_deadline(agent, monkeypatch):
+    """Mandar um byte de vez em quando não segura a conexão além do prazo total."""
+    from ponte.agent import server
+
+    monkeypatch.setattr(server, "READ_TIMEOUT", 1.0)
+    h = agent()
+    s = socket.create_connection(("127.0.0.1", h.port), timeout=10)
+    t0 = time.monotonic()
+    closed = False
+    try:
+        for b in protocol.MAGIC + b"\x00\x00\x00\x10":
+            s.sendall(bytes([b]))
+            time.sleep(0.3)  # cada byte chega antes do timeout de um recv, mas o total estoura
+    except OSError:
+        closed = True
+    if not closed:
+        s.settimeout(5)
+        try:
+            data = s.recv(100)
+            closed = data in (b"", protocol.MAGIC)
+            if data == protocol.MAGIC:
+                closed = s.recv(100) == b""
+        except OSError:
+            closed = True
+    s.close()
+    assert closed
+    assert time.monotonic() - t0 < 6

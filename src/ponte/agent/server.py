@@ -33,7 +33,8 @@ from .execute import build_spec
 from .jobs import Busy, Job, JobManager
 
 MAX_CONNECTIONS = 32
-READ_TIMEOUT = 15
+READ_TIMEOUT = 15  # prazo total pra receber a linha mágica e o pedido
+SEND_TIMEOUT = 15  # cada envio de resposta
 HEARTBEAT = 10
 MAX_ARGS = 32
 MAX_ARG_CHARS = 4096
@@ -72,9 +73,13 @@ class Handler(socketserver.BaseRequestHandler):
         srv = self.server
         sock: socket.socket = self.request
         peer_ip = self.client_address[0]
-        sock.settimeout(READ_TIMEOUT)
-
-        magic = protocol.read_magic(sock)
+        # Prazo TOTAL pra linha mágica + pedido. Sem isso, quem manda um byte a
+        # cada 14 s seguraria a conexão pra sempre (e são só 32 vagas).
+        deadline = time.monotonic() + READ_TIMEOUT
+        try:
+            magic = protocol.read_magic(sock, deadline)
+        except OSError:
+            return
         if magic == b"{":
             # Cliente v1 (linha JSON). Responde no formato dele, sem assinatura.
             sock.sendall(V1_REPLY)
@@ -88,12 +93,16 @@ class Handler(socketserver.BaseRequestHandler):
         sock.sendall(protocol.MAGIC)
 
         try:
-            req = protocol.recv_frame(sock, protocol.MAX_REQUEST_FRAME)
+            req = protocol.recv_frame(sock, protocol.MAX_REQUEST_FRAME, deadline)
         except ProtocolError as e:
             log(f"pedido ilegível de {peer_ip} ({e})")
             srv.audit_event("pedido_ilegivel", peer_ip, detalhe=str(e))
             self._unsigned(sock, "pedido ilegível")
             return
+        except OSError as e:
+            log(f"{peer_ip} não mandou o pedido a tempo ({e})")
+            return
+        sock.settimeout(SEND_TIMEOUT)
 
         cfg = srv.config_source.get()
         if cfg is None:

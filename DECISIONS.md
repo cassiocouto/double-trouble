@@ -309,3 +309,10 @@ as permissões de comandos que já existiam.
 **D50. A instalação nas duas máquinas fica com você.**
 Esta sessão roda numa máquina de nuvem e não alcança as suas. O README tem o
 passo a passo. Não fiz nenhum SSH.
+
+**D51. Prazo total pra receber o pedido.**
+Antes, cada `recv` tinha 15 s, mas não havia limite pro pedido inteiro.
+Quem mandasse um byte a cada 14 s seguraria uma das 32 vagas quase pra
+sempre. Agora a linha mágica e o pedido precisam chegar em 15 s no total.
+Na janela de pareamento (que atende uma conexão por vez) o prazo total é de
+10 s por conexão, pra ninguém travar o pareamento com uma conexão lenta.
