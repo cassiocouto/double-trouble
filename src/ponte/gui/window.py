@@ -13,7 +13,15 @@ from ..core import config as config_mod  # noqa: E402
 from .history import Entry, HistoryStore  # noqa: E402
 from .pages import CommandsPage, HistoryEntryPage, HistoryPage, MachinesPage, RunPage  # noqa: E402
 from .services import ControllerService  # noqa: E402
-from .viewmodels import CommandsVM, HistoryVM, MachinesVM, RunVM, SettingsVM  # noqa: E402
+from .viewmodels import (  # noqa: E402
+    CommandsVM,
+    HistoryVM,
+    MachinesVM,
+    PairAgentVM,
+    PairControllerVM,
+    RunVM,
+    SettingsVM,
+)
 from .widgets import toast  # noqa: E402
 
 REFRESH_SECONDS = 15
@@ -117,10 +125,16 @@ class MainWindow(Adw.ApplicationWindow):
         self._prefs.present()
 
     def show_pairing_controller(self, prefs) -> None:
-        prefs.toast("O pareamento por código chega na próxima versão. Use “Com segredo” por enquanto")
+        from .dialogs import PairControllerDialog
+
+        self._pair_dialog = PairControllerDialog(prefs.dialog, PairControllerVM(self.service, self.settings))
+        self._pair_dialog.present()
 
     def show_pairing_agent(self, prefs) -> None:
-        prefs.toast("O pareamento por código chega na próxima versão. Use 'ponte agente autorizar' no terminal")
+        from .dialogs import PairAgentDialog
+
+        self._pair_dialog = PairAgentDialog(prefs.dialog, PairAgentVM(glib_dispatch, self.settings))
+        self._pair_dialog.present()
 
     # -- avisos -------------------------------------------------------------
     def toast(self, msg: str) -> None:

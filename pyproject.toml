@@ -42,5 +42,5 @@ select = ["E", "F", "W", "I", "B", "UP", "S", "SIM", "RUF"]
 ignore = ["S101", "S603", "S607", "RUF001", "RUF002", "RUF003", "SIM105"]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["S", "B", "SIM115", "RUF043", "E501"]
+"tests/**" = ["S", "B", "SIM115", "RUF043", "RUF059", "E501"]
 "legacy/**" = ["ALL"]

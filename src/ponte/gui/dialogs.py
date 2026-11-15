@@ -264,3 +264,145 @@ class PreferencesDialog:
 
 def info_markup(text: str) -> str:
     return GLib.markup_escape_text(text)
+
+
+class PairControllerDialog:
+    """Esta máquina vai mandar: digitar o código da outra."""
+
+    def __init__(self, parent: Gtk.Widget, vm):
+        from ..core.config import DEFAULT_PORT as PORT
+
+        self.vm = vm
+        self.parent = parent
+        d = Adw.Dialog()
+        d.set_title("Parear com código")
+        d.set_content_width(460)
+        self.dialog = d
+        box = vbox(12)
+        box.append(
+            label(
+                "Na outra máquina (a que vai executar), abra Configurações → Esta máquina → "
+                "“Deixar outra controlar”, ou rode ponte parear. Ela mostra um código de 8 números.",
+                "dim-label",
+            )
+        )
+        group = Adw.PreferencesGroup()
+        self.address = Adw.EntryRow()
+        self.address.set_title("Nome da outra máquina (ex.: cass-dell-g15-5511)")
+        self.port = Adw.SpinRow.new_with_range(1, 65535, 1)
+        self.port.set_title("Porta de pareamento")
+        self.port.set_value(PORT + 1)
+        self.code = Adw.EntryRow()
+        self.code.set_title("Código")
+        group.add(self.address)
+        group.add(self.port)
+        group.add(self.code)
+        box.append(group)
+        self.status = label("", "caption")
+        box.append(self.status)
+        self.go = button("Parear", "pill", "suggested-action")
+        self.go.set_halign(Gtk.Align.CENTER)
+        self.go.connect("clicked", self._clicked)
+        box.append(self.go)
+        view = Adw.ToolbarView()
+        view.add_top_bar(Adw.HeaderBar())
+        view.set_content(box)
+        d.set_child(view)
+        vm.changed.connect(self.refresh)
+
+    def present(self) -> None:
+        self.dialog.present(self.parent)
+
+    def _clicked(self, *_):
+        if self.vm.paired:
+            self.dialog.close()
+            return
+        self.vm.start(self.address.get_text(), self.port.get_value(), self.code.get_text())
+
+    def refresh(self) -> None:
+        vm = self.vm
+        self.go.set_sensitive(not vm.busy)
+        for c in ("error", "success"):
+            self.status.remove_css_class(c)
+        if vm.busy:
+            self.status.set_label("Pareando…")
+        elif vm.error:
+            self.status.set_label(vm.error)
+            self.status.add_css_class("error")
+        elif vm.paired:
+            self.status.set_label(f"Pronto! Esta máquina agora manda comandos pra {vm.paired}.")
+            self.status.add_css_class("success")
+            self.go.set_label("Fechar")
+
+
+class PairAgentDialog:
+    """Esta máquina vai executar: mostra o código e espera a outra."""
+
+    def __init__(self, parent: Gtk.Widget, vm):
+        self.vm = vm
+        self.parent = parent
+        self._timer = 0
+        d = Adw.Dialog()
+        d.set_title("Deixar outra máquina controlar esta")
+        d.set_content_width(460)
+        d.connect("closed", lambda *_: self._closed())
+        self.dialog = d
+        box = vbox(12)
+        self.code = label("", "title-1", wrap=False, selectable=True)
+        self.code.set_halign(Gtk.Align.CENTER)
+        self.countdown = label("", "dim-label")
+        self.countdown.set_halign(Gtk.Align.CENTER)
+        self.message = label("")
+        self.log = label("", "dim-label", "caption")
+        box.append(self.code)
+        box.append(self.countdown)
+        box.append(self.message)
+        box.append(self.log)
+        self.again = button("Novo código", "pill")
+        self.again.set_halign(Gtk.Align.CENTER)
+        self.again.connect("clicked", lambda *_: self._start())
+        box.append(self.again)
+        view = Adw.ToolbarView()
+        view.add_top_bar(Adw.HeaderBar())
+        view.set_content(box)
+        d.set_child(view)
+        vm.changed.connect(self.refresh)
+
+    def present(self) -> None:
+        self.dialog.present(self.parent)
+        self._start()
+
+    def _start(self) -> None:
+        self.vm.log.clear()
+        self.vm.start()
+        if self._timer == 0:
+            self._timer = GLib.timeout_add(500, self._tick)
+
+    def _tick(self) -> bool:
+        if self.vm.state != self.vm.WAITING:
+            self._timer = 0
+            self.refresh()
+            return False
+        self.countdown.set_label(f"fecha em {self.vm.remaining()} s")
+        return True
+
+    def _closed(self) -> None:
+        self.vm.stop()
+        if self._timer:
+            GLib.source_remove(self._timer)
+            self._timer = 0
+
+    def refresh(self) -> None:
+        vm = self.vm
+        waiting = vm.state == vm.WAITING
+        self.code.set_label(vm.code if waiting else ("✓" if vm.state == vm.PAIRED else "—"))
+        self.countdown.set_visible(waiting)
+        self.message.set_label(vm.message)
+        for c in ("error", "success"):
+            self.message.remove_css_class(c)
+        if vm.state == vm.PAIRED:
+            self.message.add_css_class("success")
+        elif vm.state in (vm.FAILED, vm.CLOSED):
+            self.message.add_css_class("error")
+        self.log.set_label("\n".join(vm.log[-4:]))
+        self.again.set_visible(vm.state in (vm.CLOSED, vm.FAILED))

@@ -505,3 +505,149 @@ class SettingsVM:
         if not entry.commands:
             return "não pode rodar nenhum comando"
         return "só pode rodar: " + ", ".join(entry.commands)
+
+
+# ==========================================================================
+# Pareamento
+
+
+class PairControllerVM:
+    """Esta máquina vai MANDAR: digita o código que apareceu na outra."""
+
+    def __init__(self, service: ControllerService, settings: SettingsVM, pair=None):
+        from ..core import pairing
+
+        self.service = service
+        self.settings = settings
+        self.pair = pair or pairing.pair_and_save
+        self.busy = False
+        self.error = ""
+        self.paired = ""
+        self.changed = Signal()
+
+    def start(self, address: str, port: int | float, code: str) -> None:
+        from ..core import pairing
+
+        address = address.strip()
+        self.error = ""
+        if not address:
+            self.error = "Digite o nome (ou o endereço) da outra máquina"
+        else:
+            try:
+                code = pairing.normalize_code(code)
+            except PonteError as e:
+                self.error = friendly_error(e)
+        if self.error:
+            self.changed.emit()
+            return
+        self.busy = True
+        self.changed.emit()
+
+        def ok(paired) -> None:
+            self.busy = False
+            self.paired = paired.name
+            self.settings.changed.emit()
+            self.changed.emit()
+
+        def fail(msg: str) -> None:
+            self.busy = False
+            self.error = msg
+            self.changed.emit()
+
+        self.service.submit(lambda: self.pair(address, int(port), code, self.settings.path), ok, fail, address)
+
+
+class PairAgentVM:
+    """Esta máquina vai EXECUTAR: abre a janela de pareamento e mostra o código."""
+
+    IDLE = "parado"
+    WAITING = "aguardando"
+    PAIRED = "pareado"
+    CLOSED = "fechado"
+    FAILED = "erro"
+
+    def __init__(self, dispatch, settings: SettingsVM, find_ip=None, window_factory=None):
+        from ..core import pairing, tailscale
+
+        self.dispatch = dispatch
+        self.settings = settings
+        self.find_ip = find_ip or (lambda: tailscale.own_ip(4))
+        self.window_factory = window_factory or pairing.PairingWindow
+        self.state = self.IDLE
+        self.code = ""
+        self.message = ""
+        self.controller = ""
+        self.log: list[str] = []
+        self.window = None
+        self.changed = Signal()
+
+    def start(self) -> None:
+        import threading
+
+        from ..core import pairing
+
+        cfg = self.settings.load()
+        if cfg is None:
+            self._fail(self.settings.error or "Não achei o config desta máquina")
+            return
+        host = cfg.agent.listen if cfg.agent.listen != "tailscale" else self.find_ip()
+        if not host:
+            self._fail("Não achei o IP do Tailscale. O Tailscale está ligado?")
+            return
+        try:
+            self.window = self.window_factory(cfg, host, on_event=lambda m: self.dispatch(self._event, m))
+        except PonteError as e:
+            self._fail(friendly_error(e))
+            return
+        self.code = pairing.format_code(self.window.code)
+        self.state = self.WAITING
+        self.message = f"Na outra máquina, escolha “Parear com código” e digite o código. Endereço: {cfg.name}"
+        self.changed.emit()
+        window = self.window
+
+        def work() -> None:
+            try:
+                result = window.serve()
+            except Exception as e:
+                self.dispatch(self._fail, friendly_error(e))
+                return
+            self.dispatch(self._finished, result)
+
+        threading.Thread(target=work, name="ponte-pareamento", daemon=True).start()
+
+    def remaining(self) -> int:
+        if self.window is None or self.state != self.WAITING:
+            return 0
+        return int(self.window.remaining + 0.999)
+
+    def stop(self) -> None:
+        if self.window is not None:
+            self.window.stop()
+
+    def _event(self, msg: str) -> None:
+        self.log.append(msg)
+        self.changed.emit()
+
+    def _fail(self, msg: str) -> None:
+        self.state = self.FAILED
+        self.message = msg
+        self.changed.emit()
+
+    def _finished(self, result) -> None:
+        from ..core import pairing
+
+        if result is None:
+            self.state = self.CLOSED
+            self.message = (self.log[-1][:1].upper() + self.log[-1][1:]) if self.log else "O pareamento fechou"
+            self.changed.emit()
+            return
+        try:
+            pairing.save_controller(result, self.settings.path)
+        except PonteError as e:
+            self._fail(friendly_error(e))
+            return
+        self.state = self.PAIRED
+        self.controller = result.controller
+        self.message = f"{result.controller} agora pode mandar comandos pra esta máquina"
+        self.settings.changed.emit()
+        self.changed.emit()

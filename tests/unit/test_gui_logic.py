@@ -469,3 +469,55 @@ def test_gui_logic_never_imports_gi():
     env = {**os.environ, "PYTHONPATH": os.path.join(os.path.dirname(__file__), "..", "..", "src")}
     assert subprocess.run([sys.executable, "-c", code], env=env).returncode == 0
 
+
+# --------------------------------------------------------------------------
+# pareamento pela interface
+
+
+def test_pairing_view_models(tmp_path):
+    from ponte.core import config as config_mod
+    from ponte.gui.viewmodels import PairAgentVM, PairControllerVM
+
+    loop = FakeLoop()
+    agent_path = tmp_path / "agente.json"
+    cfg = config_mod.default_config("agente")
+    cfg.agent.listen = "127.0.0.1"
+    cfg.agent.allowed = ["127.0.0.0/8"]
+    cfg.agent.verify_tailscale = "nunca"
+    cfg.agent.pairing_port = 0
+    config_mod.save(cfg, agent_path)
+    ctl_path = tmp_path / "controle.json"
+    config_mod.save(config_mod.default_config("controle"), ctl_path)
+
+    agent_vm = PairAgentVM(loop.dispatch, SettingsVM(agent_path))
+    agent_vm.start()
+    assert agent_vm.state == PairAgentVM.WAITING
+    assert len(agent_vm.code.replace(" ", "")) == 8 and 0 < agent_vm.remaining() <= 120
+    port = agent_vm.window.port
+
+    service = ControllerService(loop.dispatch)
+    ctl_vm = PairControllerVM(service, SettingsVM(ctl_path))
+    ctl_vm.start("", port, agent_vm.code)
+    assert "Digite o nome" in ctl_vm.error
+    ctl_vm.start("127.0.0.1", port, "12")
+    assert "8 números" in ctl_vm.error
+    ctl_vm.start("127.0.0.1", port, agent_vm.code)
+    assert ctl_vm.busy
+    loop.pump(lambda: not ctl_vm.busy and agent_vm.state != PairAgentVM.WAITING)
+    assert ctl_vm.paired == "agente", ctl_vm.error
+    assert agent_vm.state == PairAgentVM.PAIRED and agent_vm.controller == "controle"
+    a = config_mod.load(agent_path)
+    c = config_mod.load(ctl_path)
+    assert a.agent.controllers["controle"].secret == c.machines["agente"].secret
+    service.shutdown()
+
+
+def test_pairing_agent_vm_without_tailscale(tmp_path):
+    from ponte.core import config as config_mod
+    from ponte.gui.viewmodels import PairAgentVM
+
+    path = tmp_path / "a.json"
+    config_mod.save(config_mod.default_config("a"), path)
+    vm = PairAgentVM(FakeLoop().dispatch, SettingsVM(path), find_ip=lambda: None)
+    vm.start()
+    assert vm.state == PairAgentVM.FAILED and "Tailscale" in vm.message

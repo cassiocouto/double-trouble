@@ -428,6 +428,41 @@ def cmd_config(a) -> None:
 # --------------------------------------------------------------------------
 
 
+def cmd_parear(a) -> None:
+    from ..core import pairing, tailscale
+
+    if a.com:
+        cfg = load_cfg()
+        code = a.codigo or input("Código que apareceu na outra máquina: ")
+        port = a.porta or config_mod.DEFAULT_PORT + 1
+        say(f"pareando com {a.com}...")
+        paired = pairing.pair_with(cfg.name, a.com, port, code)
+        pairing.save_machine(paired)
+        say(f"pronto, esta máquina ({cfg.name}) agora manda comandos pra {paired.name}")
+        say(f"teste com:  ponte ping {paired.name}")
+        return
+    cfg = load_cfg()
+    host = a.escutar or (cfg.agent.listen if cfg.agent.listen != "tailscale" else tailscale.own_ip(4))
+    if not host:
+        raise Exit(3, "não achei o IP do Tailscale (tailscale ip -4). O Tailscale está ligado?")
+    window = pairing.PairingWindow(cfg, host, port=a.porta, seconds=a.tempo, on_event=lambda msg: say(f"  {msg}"))
+    say(f"Janela de pareamento aberta em {host}:{window.port} por {a.tempo:.0f} s.\n")
+    say(f"    código:  {pairing.format_code(window.code)}\n")
+    say("Na máquina que vai MANDAR os comandos, rode:\n")
+    say(f"    ponte parear --com {cfg.name}\n")
+    say(f"e digite o código. Depois de {pairing.MAX_FAILURES} erros a janela fecha.")
+    try:
+        result = window.serve()
+    except KeyboardInterrupt:
+        window.stop()
+        raise Exit(130, "pareamento cancelado") from None
+    if result is None:
+        raise Exit(1, "ninguém pareou. Rode 'ponte parear' de novo pra um código novo")
+    pairing.save_controller(result)
+    say(f"\npronto, {result.controller} pode mandar comandos pra esta máquina.")
+    say("O agente relê o config sozinho. Pra escolher quais comandos ela pode rodar, use a interface.")
+
+
 def cmd_migrar(a) -> None:
     from . import migrate
 
@@ -536,6 +571,16 @@ def build_parser() -> argparse.ArgumentParser:
 
     s = sub.add_parser("config", help="mostra o config sem os segredos")
     s.set_defaults(func=cmd_config)
+
+    s = sub.add_parser("parear", help="pareia duas máquinas com um código curto")
+    s.add_argument(
+        "--com", metavar="ENDERECO", help="(na máquina que MANDA) endereço da outra, ex.: cass-dell-g15-5511"
+    )
+    s.add_argument("--codigo", help="o código que apareceu na outra (padrão: pergunta)")
+    s.add_argument("--porta", type=int, help="porta de pareamento (padrão 47801)")
+    s.add_argument("--tempo", type=float, default=120, help="(na máquina que EXECUTA) segundos de janela aberta")
+    s.add_argument("--escutar", help="(na máquina que EXECUTA) IP pra escutar, se não for o do Tailscale")
+    s.set_defaults(func=cmd_parear)
 
     s = sub.add_parser("migrar", help="traz o config do ponte.py v1 e desliga o serviço antigo")
     s.add_argument("--sim", action="store_true", help="não pergunta antes")

@@ -273,3 +273,39 @@ quando a janela fechou aparece como "Sem resultado".
 **D44. Notificação só pra job longo e janela sem foco.**
 Acima de 10 s, se a janela não estiver em foco, o app manda uma notificação
 do desktop. Clicar nela traz a janela de volta.
+
+## Fase 5
+
+**D45. Pareamento com SPAKE2 e um código de 8 números.**
+Um código curto usado como senha direto seria quebrado offline por quem
+visse a conversa. Com um PAKE (SPAKE2), quem escuta não aprende nada, e quem
+finge ser uma das pontas só testa um código por tentativa. Com 3 tentativas
+por janela de 2 minutos, a chance de acertar no chute é 3 em 100 milhões. O
+segredo final é derivado dos dois lados e nunca passa pela rede.
+
+**D46. SPAKE2 feito à mão, só com a biblioteca padrão.**
+O pedido era usar só a stdlib. O `pow` do Python faz a conta no grupo de
+2048 bits da RFC 3526 em poucos milissegundos. M e N saem de um hash
+(ninguém sabe o log discreto deles). Os elementos recebidos são conferidos
+(dentro do subgrupo, nem 0, nem 1, nem p−1). Não é auditado nem tempo
+constante. Isso está escrito no `docs/SEGURANCA.md`, junto com o porquê de
+ser aceitável aqui (uso raro, dentro do WireGuard do Tailscale).
+
+**D47. Só números no código, em dois grupos de 4.**
+Letras confundem fácil (0 e O, 1 e l, b e d). Números em dois grupos de 4
+são mais fáceis de ler e digitar. O controlador aceita com espaço ou hífen.
+
+**D48. Pareamento numa porta separada e num processo separado.**
+A janela roda na porta 47801, aberta pelo `ponte parear` (ou pela interface)
+só por 2 minutos. O agente principal nem sabe que ela existe: o pareamento
+grava o `ponte.json` e o agente relê sozinho. Assim o código de pareamento
+não fica exposto o tempo todo, e um bug nele não derruba o agente.
+
+**D49. Cada pareamento vale pra uma direção.**
+"A G15 deixou a brasil mandar" não quer dizer que a brasil deixou a G15. Pra
+ter as duas direções, pareie duas vezes. Re-parear troca o segredo e mantém
+as permissões de comandos que já existiam.
+
+**D50. A instalação nas duas máquinas fica com você.**
+Esta sessão roda numa máquina de nuvem e não alcança as suas. O README tem o
+passo a passo. Não fiz nenhum SSH.

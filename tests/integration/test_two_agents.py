@@ -244,3 +244,89 @@ def test_config_hides_secrets(machines):
     cfg = config_mod.load(Path(a.env["PONTE_DIR"]) / "ponte.json")
     for m in cfg.machines.values():
         assert m.secret.hex() not in out
+
+
+def test_pairing_by_code_between_processes(tmp_path):
+    """Só com 'ponte parear' dos dois lados, sem copiar segredo nenhum."""
+    a = Machine(tmp_path / "pa", "maquina-a")
+    b = Machine(tmp_path / "pb", "maquina-b")
+    for m in (a, b):
+        m.ponte("init", "--nome", m.name, "--escutar", "127.0.0.1", "--porta", str(m.port), "--sem-exemplos")
+
+        def loopback(cfg):
+            cfg.agent.allowed = ["127.0.0.0/8"]
+
+        config_mod.update(loopback, Path(m.env["PONTE_DIR"]) / "ponte.json")
+    b.start_agent()
+    pair_port = free_port()
+    try:
+        window = subprocess.Popen(
+            [sys.executable, "-m", "ponte.cli", "parear", "--escutar", "127.0.0.1", "--porta", str(pair_port)],
+            env=b.env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        code = None
+        for _ in range(20):
+            line = window.stdout.readline()
+            if "código:" in line:
+                code = line.split("código:", 1)[1].strip()
+                break
+        assert code and len(code.replace(" ", "")) == 8
+        r = a.ponte("parear", "--com", "127.0.0.1", "--porta", str(pair_port), "--codigo", code)
+        assert "agora manda comandos pra maquina-b" in r.stdout
+        out, err = window.communicate(timeout=10)
+        assert window.returncode == 0, out + err
+        assert "maquina-a pode mandar comandos" in out
+        # Ainda falta a porta certa do agente no lado A? Não: ela veio no pareamento.
+        assert "maquina-b respondeu" in a.ponte("ping", "maquina-b").stdout
+        # E a direção contrária continua fechada até parear de novo no outro sentido.
+        assert "não controla nenhuma" in b.ponte("maquinas").stdout
+    finally:
+        b.stop_agent()
+
+
+def test_pairing_wrong_code_from_cli(tmp_path):
+    a = Machine(tmp_path / "wa", "maquina-a")
+    b = Machine(tmp_path / "wb", "maquina-b")
+    for m in (a, b):
+        m.ponte("init", "--nome", m.name, "--escutar", "127.0.0.1", "--porta", str(m.port), "--sem-exemplos")
+
+        def loopback(cfg):
+            cfg.agent.allowed = ["127.0.0.0/8"]
+
+        config_mod.update(loopback, Path(m.env["PONTE_DIR"]) / "ponte.json")
+    pair_port = free_port()
+    window = subprocess.Popen(
+        [
+            sys.executable,
+            "-m",
+            "ponte.cli",
+            "parear",
+            "--escutar",
+            "127.0.0.1",
+            "--porta",
+            str(pair_port),
+            "--tempo",
+            "20",
+        ],
+        env=b.env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    code = None
+    for _ in range(20):
+        line = window.stdout.readline()
+        if "código:" in line:
+            code = line.split("código:", 1)[1].strip().replace(" ", "")
+            break
+    wrong = "00000000" if code != "00000000" else "11111111"
+    for _ in range(3):
+        r = a.ponte("parear", "--com", "127.0.0.1", "--porta", str(pair_port), "--codigo", wrong, check=False)
+        assert r.returncode == 4 and "código errado" in r.stderr
+    out, _ = window.communicate(timeout=10)
+    assert window.returncode == 1
+    assert "3 tentativas erradas" in out
+    assert config_mod.load(Path(b.env["PONTE_DIR"]) / "ponte.json").agent.controllers == {}
