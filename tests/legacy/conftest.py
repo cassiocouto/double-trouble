@@ -20,6 +20,37 @@ import pytest
 LEGACY = Path(__file__).resolve().parents[2] / "legacy" / "ponte.py"
 
 
+class PackageAsV1:
+    """Faz o pacote novo parecer o modulo ponte.py, pra rodar os mesmos testes."""
+
+    def __init__(self):
+        from ponte.agent.legacy_server import LegacyServer
+        from ponte.cli import main as cli
+        from ponte.core import legacy, paths
+        from ponte.core.errors import AuthError, ConfigError, ConnectionFailed
+
+        self.sign = legacy.sign
+        self.verify = legacy.verify
+        self.PonteServer = LegacyServer
+
+        def load_config():
+            try:
+                return legacy.load_v1_config(paths.legacy_config_file())
+            except ConfigError as e:
+                raise SystemExit(2) from e
+
+        def call(cfg, query, body, wait):
+            try:
+                return cli.call(cfg, query, body, wait)
+            except AuthError as e:
+                raise SystemExit(4) from e
+            except ConnectionFailed as e:
+                raise SystemExit(3) from e
+
+        self.load_config = load_config
+        self.call = call
+
+
 def load_v1():
     """Carrega o ponte.py como modulo novo (BASE_DIR vem do PONTE_DIR atual)."""
     name = f"ponte_v1_{secrets.token_hex(4)}"
@@ -49,7 +80,8 @@ def wait_until(pred, timeout: float = 5.0, step: float = 0.05) -> bool:
 
 
 class V1:
-    def __init__(self, mod, base: Path, key: bytes):
+    def __init__(self, mod, base: Path, key: bytes, impl: str):
+        self.impl = impl
         self.mod = mod
         self.base = base
         self.key = key
@@ -131,13 +163,14 @@ class V1:
         return self.mod.verify(self.key, "resp", resp)
 
 
-@pytest.fixture
-def v1(tmp_path, monkeypatch):
+@pytest.fixture(params=["legacy", "pacote"])
+def v1(request, tmp_path, monkeypatch):
+    """O mesmo teste roda contra o ponte.py original e contra o pacote novo."""
     base = tmp_path / "ponte"
     base.mkdir(mode=0o700)
     (base / "comandos").mkdir(mode=0o700)
     monkeypatch.setenv("PONTE_DIR", str(base))
-    mod = load_v1()
-    h = V1(mod, base, secrets.token_bytes(32))
+    mod = load_v1() if request.param == "legacy" else PackageAsV1()
+    h = V1(mod, base, secrets.token_bytes(32), request.param)
     yield h
     h.stop()

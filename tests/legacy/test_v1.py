@@ -137,10 +137,14 @@ def test_bad_nonce_rejected(v1):
     assert resp["erro"] == "nonce invalido"
 
 
-@pytest.mark.xfail(
-    strict=True, reason="BUG v1: mac nao-ASCII faz compare_digest estourar e a resposta sai assinada"
-)
-def test_v1_bug_non_ascii_mac_gets_signed_reply(v1):
+def only_legacy_fails(request, v1, reason):
+    """O bug existe no ponte.py original. No pacote ele foi corrigido."""
+    if v1.impl == "legacy":
+        request.node.add_marker(pytest.mark.xfail(strict=True, reason=reason))
+
+
+def test_v1_bug_non_ascii_mac_gets_signed_reply(request, v1):
+    only_legacy_fails(request, v1, "BUG v1: mac nao-ASCII faz a resposta de erro sair assinada")
     v1.start()
     req = {"v": 1, "acao": "ping", "ts": int(time.time()), "nonce": "a" * 32, "mac": "é"}
     resp = v1.send(req)
@@ -148,12 +152,13 @@ def test_v1_bug_non_ascii_mac_gets_signed_reply(v1):
     assert "mac" not in resp
 
 
-@pytest.mark.xfail(strict=True, reason="BUG v1: ts=NaN passa pela checagem de horario")
-def test_v1_bug_nan_timestamp(v1):
+def test_v1_bug_nan_timestamp(request, v1):
+    only_legacy_fails(request, v1, "BUG v1: ts=NaN passa pela checagem de horario")
     v1.start()
     req = v1.build({"acao": "ping"}, ts=float("nan"))
     resp = v1.send(req)
-    assert resp["ok"] is False
+    # O pacote nem aceita NaN no JSON (nao responde). Recusar com erro tambem vale.
+    assert resp is None or resp["ok"] is False
 
 
 # --------------------------------------------------------------------------
@@ -349,6 +354,10 @@ print("tchau")
     assert time.monotonic() - t0 < 5
     assert resp["stdout"] == "tchau\n"
     pid = int(pidfile.read_text())
+    if v1.impl == "pacote":
+        # Mudanca de proposito (DECISIONS.md): o grupo morre quando o comando acaba.
+        assert wait_until(lambda: not alive(pid))
+        return
     try:
         assert alive(pid), "comportamento v1: o filho fica vivo"
     finally:

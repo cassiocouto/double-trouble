@@ -1,3 +1,33 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ponte"
+version = "2.0.0"
+description = "Uma máquina roda comandos pré-aprovados na outra, pelo Tailscale."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Cass" }]
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=7", "ruff>=0.5"]
+
+[project.scripts]
+ponte = "ponte.cli.main:main"
+ponte-agent = "ponte.agent.main:main"
+
+[project.gui-scripts]
+ponte-gui = "ponte.gui.app:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+ponte = ["data/*"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
@@ -9,7 +39,7 @@ target-version = "py310"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP", "S", "SIM", "RUF"]
-ignore = ["S101", "S603", "S607", "RUF001", "RUF002", "RUF003"]
+ignore = ["S101", "S603", "S607", "RUF001", "RUF002", "RUF003", "SIM105"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S", "B"]
