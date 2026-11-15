@@ -18,6 +18,7 @@ from .history import Entry, HistoryStore
 from .services import ControllerService, RunHandle, friendly_error
 from .signals import Signal
 
+MAX_SCREEN_OUTPUT = 1024 * 1024  # caracteres guardados por execução na tela
 LONG_JOB = 10.0  # segundos; acima disso avisa por notificação se a janela não estiver em foco
 SKEW_WARNING = 30.0
 
@@ -219,6 +220,8 @@ class RunVM:
             self.message = self.command.get("bloqueado") or self.form.error or "Este comando não pode rodar"
         self.errors: dict[str, str] = {}
         self.output: list[tuple[str, str]] = []
+        self._kept = 0
+        self.output_cut = False
         self.job: str | None = None
         self.result: dict | None = None
         self.started_at: float | None = None
@@ -270,6 +273,8 @@ class RunVM:
         params, args = self._pending
         self._pending = None
         self.output = []
+        self._kept = 0
+        self.output_cut = False
         self.output_cleared.emit()
         self.job = None
         self.result = None
@@ -282,7 +287,14 @@ class RunVM:
             self._row = self.history.start(self.machine, self.command["nome"], remember_values(self.form, params, args))
         self.changed.emit()
         self.handle = self.service.run(
-            self.machine, self.command["nome"], params, args, self._on_event, self._on_done, self._on_error
+            self.machine,
+            self.command["nome"],
+            params,
+            args,
+            self._on_event,
+            self._on_done,
+            self._on_error,
+            confirmed=self.form.needs_confirmation,  # só chega aqui depois do "Rodar" no diálogo
         )
 
     def cancel(self) -> None:
@@ -318,8 +330,14 @@ class RunVM:
             stream = "stderr" if ev.get("fluxo") == "stderr" else "stdout"
             data = ev.get("dados")
             if isinstance(data, str) and data:
-                self.output.append((stream, data))
-                self.output_added.emit(stream, data)
+                room = MAX_SCREEN_OUTPUT - self._kept
+                if len(data) > room:
+                    data = data[: max(room, 0)]
+                    self.output_cut = True
+                if data:
+                    self._kept += len(data)
+                    self.output.append((stream, data))
+                    self.output_added.emit(stream, data)
 
     def _on_done(self, outcome) -> None:
         self.ended_at = self.clock()

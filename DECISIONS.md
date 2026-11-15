@@ -316,3 +316,54 @@ Quem mandasse um byte a cada 14 s seguraria uma das 32 vagas quase pra
 sempre. Agora a linha mágica e o pedido precisam chegar em 15 s no total.
 Na janela de pareamento (que atende uma conexão por vez) o prazo total é de
 10 s por conexão, pra ninguém travar o pareamento com uma conexão lenta.
+
+## Revisão de segurança
+
+Um revisor independente leu o código depois da fase 5. Tudo que ele achou e
+eu confirmei foi corrigido, com um teste cada (`test_review_*` e outros).
+
+**D52. No máximo 4 conexões abertas por IP.** Um aparelho do tailnet que
+reconectava sem parar ocupava as 32 vagas. Agora precisa de 8 IPs.
+
+**D53. Segredo e código nunca no argv.** `--segredo <hex>` e `--codigo`
+deixavam o segredo visível no `ps` pra outros usuários da máquina. Agora só
+pelo terminal (sem eco) ou pelo stdin. `--segredo -` continua funcionando.
+
+**D54. Texto de fora não forja log nem apaga auditoria.** O erro de chave
+repetida não repete mais a chave (que vinha do atacante). Todo texto de fora
+é cortado em 200 caracteres e tem controle escapado antes do log. Recusas
+anônimas vão pra auditoria no máximo 30 por minuto.
+
+**D55. Regex do PARAMETROS num processo à parte, com 1 s.** O `re` segura o
+GIL: uma regex com backtracking congelava o agente inteiro, inclusive os
+timeouts dos outros jobs e o watchdog. Num processo à parte, só aquele pedido
+falha. Custa uns 30 ms por parâmetro com regex.
+
+**D56. `whois` só confia no `Node.Name` do próprio tailnet.** O
+`Hostinfo.Hostname` é o aparelho que diz, e qualquer um podia dizer que se
+chamava "cass-dell-brasil". Agora vale o nome dado pelo servidor de controle,
+com o domínio deste tailnet (lido do `tailscale status --json`).
+
+**D57. Mesmo trabalho pra nome desconhecido.** Antes o agente recusava um
+nome desconhecido antes de calcular o HMAC, e o tempo dizia quais nomes
+existiam. Agora ele calcula com uma chave qualquer.
+
+**D58. Backups com modo 600 desde o primeiro byte, e pasta do config
+conferida.** O `shutil.copy2` criava a cópia aberta e só depois mudava o
+modo. Agora usa a mesma escrita privada do resto. O `ponte.json` também é
+recusado se a pasta dele for gravável por outros.
+
+**D59. `CONFIRMAR` também no agente.** O agente exige `"confirmado": true`.
+Não para quem pegou o controlador, mas garante que todo controlador pergunte.
+
+**D60. Histórico de jobs separado por controlador, e teto no controlador.**
+Um controlador não empurra mais os resultados do outro pra fora. O
+controlador guarda no máximo 1 Mi caracteres de saída por job, contra um
+agente que mande saída sem fim.
+
+**D61. `--` no exemplo `notificar`.** Sem ele, um texto começando com `-`
+virava opção do `notify-send`.
+
+**Ficou como limite conhecido** (está no `docs/SEGURANCA.md`): processo que
+sai do grupo de propósito (`setsid`) não é morto no timeout. Um cgroup por
+job resolveria, e ficou como melhoria futura.

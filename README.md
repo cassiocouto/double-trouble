@@ -70,7 +70,8 @@ Na **brasil** (a que vai mandar):
 ponte parear --com cass-dell-g15-5511
 ```
 
-Digite o código. Pronto. Teste:
+Digite o código quando ele pedir (o código nunca vai na linha de comando).
+Pronto. Teste:
 
 ```bash
 ponte ping g15

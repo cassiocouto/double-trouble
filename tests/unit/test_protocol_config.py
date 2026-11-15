@@ -221,3 +221,25 @@ def test_config_source_reloads_and_fails_closed(tmp_path):
     config_mod.save(config_mod.default_config("c"), path)
     assert src.get().name == "c"
     assert json.loads(path.read_text())["nome"] == "c"
+
+
+def test_config_dir_must_not_be_writable_by_others(tmp_path):
+    folder = tmp_path / "cfg"
+    folder.mkdir(mode=0o700)
+    path = folder / "ponte.json"
+    config_mod.save(config_mod.default_config("a"), path)
+    os.chmod(folder, 0o777)
+    try:
+        with pytest.raises(ConfigError, match="chmod 700"):
+            config_mod.load(path)
+    finally:
+        os.chmod(folder, 0o700)
+    assert config_mod.load(path).name == "a"
+
+
+def test_duplicate_key_error_does_not_echo_the_key():
+    from ponte.core.legacy import loads_strict
+
+    with pytest.raises(ValueError) as e:
+        loads_strict('{"segredo-gigante": 1, "segredo-gigante": 2}')
+    assert "segredo-gigante" not in str(e.value)

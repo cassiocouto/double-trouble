@@ -12,8 +12,6 @@ from ponte.core import protocol
 from ponte.core.config import ControllerEntry
 from ponte.core.errors import AuthError, RemoteError
 
-from ..conftest import wait_until
-
 TICKER = """
 import sys, time
 TIMEOUT = 30
@@ -195,26 +193,32 @@ def test_concurrent_streams(agent):
 # tailscale whois (camada extra)
 
 
-def fake_tailscale(tmp_path, node_name: str | None):
+TAILNET = "tail123.ts.net"
+
+
+def fake_tailscale(tmp_path, node_fqdn: str | None, hostname: str = "x"):
+    """Um `tailscale` falso: whois devolve o nó pedido; status diz que este tailnet é tail123."""
     script = tmp_path / "tailscale"
-    if node_name is None:
-        body = "#!/bin/sh\nexit 1\n"
-    else:
-        body = (
-            "#!/bin/sh\n"
-            'if [ "$1" = whois ]; then\n'
-            f'  echo \'{{"Node": {{"ComputedName": "{node_name}", "Name": "{node_name}.tail123.ts.net."}}}}\'\n'
-            "  exit 0\nfi\n"
-            'if [ "$1" = ip ]; then echo 100.100.1.1; exit 0; fi\nexit 1\n'
-        )
-    script.write_text(body)
+    node = "{}" if node_fqdn is None else f'{{"Name": "{node_fqdn}.", "Hostinfo": {{"Hostname": "{hostname}"}}}}'
+    script.write_text(
+        "#!/bin/sh\n"
+        f'if [ "$1" = whois ]; then echo \'{{"Node": {node}}}\'; exit 0; fi\n'
+        f'if [ "$1" = status ]; then echo \'{{"Self": {{"DNSName": "agente.{TAILNET}."}}}}\'; exit 0; fi\n'
+        'if [ "$1" = ip ]; then echo 100.100.1.1; exit 0; fi\nexit 1\n'
+    )
     os.chmod(script, 0o700)
     return script
 
 
 @pytest.mark.parametrize(
     "node, ok",
-    [("controle", True), ("CONTROLE", True), ("intruso", False), (None, False)],
+    [
+        (f"controle.{TAILNET}", True),
+        (f"CONTROLE.{TAILNET}", True),
+        (f"intruso.{TAILNET}", False),
+        ("controle.outro-tailnet.ts.net", False),  # nó compartilhado de outro tailnet com o mesmo nome
+        (None, False),
+    ],
 )
 def test_whois_required(agent, tmp_path, monkeypatch, node, ok):
     monkeypatch.setenv("PONTE_TAILSCALE", str(fake_tailscale(tmp_path, node)))
@@ -227,8 +231,16 @@ def test_whois_required(agent, tmp_path, monkeypatch, node, ok):
         assert h.audit[-1]["evento"] == "whois_recusado"
 
 
+def test_whois_ignores_self_reported_hostname(agent, tmp_path, monkeypatch):
+    """Um aparelho que se chama 'controle' por conta própria não passa: vale o nome do controle do Tailscale."""
+    monkeypatch.setenv("PONTE_TAILSCALE", str(fake_tailscale(tmp_path, f"intruso.{TAILNET}", hostname="controle")))
+    h = agent(verify_tailscale="sempre")
+    with pytest.raises(RemoteError, match="intruso"):
+        h.client().ping()
+
+
 def test_whois_auto_skips_loopback(agent, tmp_path, monkeypatch):
-    monkeypatch.setenv("PONTE_TAILSCALE", str(fake_tailscale(tmp_path, "intruso")))
+    monkeypatch.setenv("PONTE_TAILSCALE", str(fake_tailscale(tmp_path, f"intruso.{TAILNET}")))
     h = agent(verify_tailscale="auto")
     assert h.client().ping()  # 127.0.0.1 não é IP do tailnet, então "auto" não confere
 
@@ -240,13 +252,13 @@ def test_whois_sempre_without_binary(agent, monkeypatch, tmp_path):
         h.client().ping()
 
 
-def test_whois_node_names_parsing():
-    from ponte.core.tailscale import in_tailnet, node_names
+def test_whois_parsing():
+    from ponte.core.tailscale import in_tailnet, node_fqdn
 
-    data = {"Node": {"ComputedName": "Cass-Dell", "Name": "cass-dell.tail.ts.net.", "Hostinfo": {"Hostname": "x"}}}
-    assert node_names(data) == {"cass-dell", "x"}
-    assert node_names({}) == set()
-    assert node_names({"Node": "lixo"}) == set()
+    data = {"Node": {"ComputedName": "x", "Name": "Cass-Dell.tail.ts.net.", "Hostinfo": {"Hostname": "y"}}}
+    assert node_fqdn(data) == "cass-dell.tail.ts.net"
+    assert node_fqdn({"Node": {"ComputedName": "x", "Hostinfo": {"Hostname": "y"}}}) is None
+    assert node_fqdn({}) is None and node_fqdn({"Node": "lixo"}) is None
     assert in_tailnet("100.64.0.1") and in_tailnet("fd7a:115c:a1e0::1")
     assert not in_tailnet("127.0.0.1") and not in_tailnet("lixo")
 
@@ -256,11 +268,14 @@ def test_whois_cache(tmp_path, monkeypatch):
 
     counter = tmp_path / "count"
     script = tmp_path / "tailscale"
-    script.write_text(f'#!/bin/sh\necho x >> {counter}\necho \'{{"Node": {{"ComputedName": "a"}}}}\'\n')
+    script.write_text(
+        "#!/bin/sh\n"
+        f'if [ "$1" = whois ]; then echo x >> {counter}; echo \'{{"Node": {{"Name": "a.{TAILNET}."}}}}\'; fi\n'
+        f'if [ "$1" = status ]; then echo \'{{"Self": {{"DNSName": "b.{TAILNET}."}}}}\'; fi\n'
+    )
     os.chmod(script, 0o700)
     monkeypatch.setenv("PONTE_TAILSCALE", str(script))
     w = WhoisChecker(ttl=60)
     for _ in range(5):
         w.check("sempre", "100.64.0.5", "a")
     assert counter.read_text().count("x") == 1
-    assert wait_until(lambda: True)

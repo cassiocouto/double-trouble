@@ -120,3 +120,19 @@ def test_cli_migrar_asks_without_tty(v1_setup, capsys):
     assert not paths.config_file().exists()
     main(["migrar", "--sim"])
     assert paths.config_file().exists()
+
+
+def test_cli_refuses_secret_on_argv(base, capsys):
+    from ponte.cli.main import main
+    from ponte.core import config as config_mod
+
+    config_mod.save(config_mod.default_config("a"))
+    for argv in (
+        ["maquina", "adicionar", "g15", "--segredo", "ab" * 32],
+        ["agente", "autorizar", "g15", "--segredo", "ab" * 32],
+    ):
+        with pytest.raises(SystemExit) as e:
+            main(argv)
+        assert e.value.code == 2
+        assert "ps" in capsys.readouterr().err
+    assert config_mod.load().machines == {}

@@ -121,7 +121,9 @@ class JobManager:
         self.on_finish = on_finish
         self._lock = threading.Lock()
         self._running: dict[str, Job] = {}
-        self._finished: deque[Job] = deque(maxlen=keep)
+        # Um histórico por controlador: um não empurra os resultados do outro pra fora.
+        self.keep = keep
+        self._finished: dict[str, deque[Job]] = {}
         self._threads: dict[str, threading.Thread] = {}
 
     @property
@@ -195,7 +197,7 @@ class JobManager:
         with self._lock:
             self._running.pop(job.id, None)
             self._threads.pop(job.id, None)
-            self._finished.append(job)
+            self._finished.setdefault(job.controller, deque(maxlen=self.keep)).append(job)
         if self.on_finish:
             try:
                 self.on_finish(job)
@@ -207,7 +209,9 @@ class JobManager:
         if not isinstance(job_id, str):
             return None
         with self._lock:
-            job = self._running.get(job_id) or next((j for j in self._finished if j.id == job_id), None)
+            job = self._running.get(job_id) or next(
+                (j for j in self._finished.get(controller, ()) if j.id == job_id), None
+            )
         if job is None or job.controller != controller:
             return None
         return job
@@ -220,7 +224,7 @@ class JobManager:
 
     def recent(self, controller: str, limit: int = KEEP_FINISHED) -> list[Job]:
         with self._lock:
-            jobs = [*self._running.values(), *self._finished]
+            jobs = [*self._running.values(), *self._finished.get(controller, ())]
         mine = [j for j in jobs if j.controller == controller]
         mine.sort(key=lambda j: j.started_at, reverse=True)
         return mine[:limit]

@@ -58,21 +58,36 @@ def in_tailnet(ip: str) -> bool:
     return any(addr in net for net in TAILSCALE_RANGES)
 
 
-def node_names(whois: dict) -> set[str]:
-    """Nomes possíveis do nó na resposta do `tailscale whois --json`."""
-    names: set[str] = set()
+def node_fqdn(whois: dict) -> str | None:
+    """O nome MagicDNS do nó (Node.Name), em minúsculo e sem o ponto final.
+
+    Só vale o Node.Name, que quem dá é o servidor de controle do Tailscale (e
+    é único no tailnet). O Hostinfo.Hostname e o ComputedName podem vir do que
+    o próprio aparelho diz sobre si, então não servem pra provar nada.
+    """
     node = whois.get("Node") if isinstance(whois, dict) else None
     if not isinstance(node, dict):
-        return names
-    for key in ("ComputedName", "Name"):
-        value = node.get(key)
-        if isinstance(value, str) and value:
-            names.add(value.rstrip(".").split(".", 1)[0].lower())
-    hostinfo = node.get("Hostinfo")
-    if isinstance(hostinfo, dict) and isinstance(hostinfo.get("Hostname"), str):
-        names.add(hostinfo["Hostname"].split(".", 1)[0].lower())
-    names.discard("")
-    return names
+        return None
+    name = node.get("Name")
+    if not isinstance(name, str) or not name.strip("."):
+        return None
+    return name.rstrip(".").lower()
+
+
+def own_suffix() -> str | None:
+    """Domínio MagicDNS deste tailnet (ex.: tail1234.ts.net), lido do `tailscale status --json`."""
+    out = _run(["status", "--json"])
+    if not out:
+        return None
+    try:
+        data = json.loads(out)
+    except ValueError:
+        return None
+    me = data.get("Self") if isinstance(data, dict) else None
+    dns = me.get("DNSName") if isinstance(me, dict) else None
+    if not isinstance(dns, str) or "." not in dns.rstrip("."):
+        return None
+    return dns.rstrip(".").lower().split(".", 1)[1]
 
 
 def whois(ip: str) -> dict | None:
@@ -96,22 +111,31 @@ class WhoisChecker:
 
     def __init__(self, ttl: float = 60):
         self.ttl = ttl
-        self._cache: dict[str, tuple[float, set[str] | None]] = {}
+        self._cache: dict[str, tuple[float, str | None]] = {}
+        self._own: tuple[float, str | None] | None = None
         self._lock = threading.Lock()
 
-    def _names(self, ip: str) -> set[str] | None:
+    def _fqdn(self, ip: str) -> str | None:
         now = time.monotonic()
         with self._lock:
             hit = self._cache.get(ip)
             if hit and now - hit[0] < self.ttl:
                 return hit[1]
         data = whois(ip)
-        names = node_names(data) if data else None
+        fqdn = node_fqdn(data) if data else None
         with self._lock:
             if len(self._cache) > 1000:
                 self._cache.clear()
-            self._cache[ip] = (now, names)
-        return names
+            self._cache[ip] = (now, fqdn)
+        return fqdn
+
+    def _suffix(self) -> str | None:
+        now = time.monotonic()
+        if self._own is not None and now - self._own[0] < self.ttl:
+            return self._own[1]
+        suffix = own_suffix()
+        self._own = (now, suffix)
+        return suffix
 
     def check(self, mode: str, ip: str, expected: str) -> None:
         if mode == "nunca":
@@ -120,9 +144,12 @@ class WhoisChecker:
             return
         if not binary():
             raise AuthError("verificar_tailscale = sempre, mas o comando tailscale não foi achado")
-        names = self._names(ip)
-        if names is None:
+        fqdn = self._fqdn(ip)
+        if fqdn is None:
             raise AuthError(f"o tailscale whois não reconheceu o IP {ip}")
-        if expected.lower() not in names:
-            shown = ", ".join(sorted(names)) or "?"
-            raise AuthError(f"o IP {ip} é do nó '{shown}', não de '{expected}'")
+        suffix = self._suffix()
+        if suffix is None:
+            raise AuthError("não consegui ler o domínio deste tailnet (tailscale status --json)")
+        wanted = f"{expected.lower()}.{suffix}"
+        if fqdn != wanted:
+            raise AuthError(f"o IP {ip} é do nó '{fqdn}', não de '{wanted}'")

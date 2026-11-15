@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import ipaddress
 import os
-import shutil
 import subprocess
 import time
 from dataclasses import dataclass, field
@@ -22,6 +21,7 @@ from pathlib import Path
 from ..core import config as config_mod
 from ..core import legacy, paths
 from ..core.errors import ConfigError
+from ..core.safety import write_private
 
 V1_UNIT = "ponte.service"
 LOOPBACK = {"127.0.0.0/8", "::1/128"}
@@ -150,11 +150,10 @@ def apply(plan: Plan, force: bool = False, stop_v1: bool = True) -> list[str]:
         if not force:
             raise ConfigError(f"{target} já existe. Use --forcar (o atual vira backup)")
         backup_v2 = target.with_name(f"{target.name}.bak-{stamp}")
-        shutil.copy2(target, backup_v2)
+        write_private(backup_v2, target.read_bytes())
         done.append(f"backup do config v2 anterior em {backup_v2}")
     backup = plan.v1_config.with_name(f"{plan.v1_config.name}.v1-backup-{stamp}")
-    shutil.copy2(plan.v1_config, backup)
-    os.chmod(backup, 0o600)
+    write_private(backup, plan.v1_config.read_bytes())
     done.append(f"backup do config v1 em {backup}")
     config_mod.save(plan.new, target)
     done.append(f"config v2 criado em {target}")

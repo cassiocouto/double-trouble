@@ -148,7 +148,7 @@ Não tem `mac` nem `nonce`. Controlador desconhecido e assinatura errada dão a
 **mesma** mensagem, pra ninguém descobrir nomes de controladores.
 
 Códigos de erro: `versao`, `destino`, `relogio`, `nonce`, `repetido`,
-`whois`, `acao`, `nome`, `permissao`, `args`, `parametro`, `comando`,
+`whois`, `acao`, `nome`, `permissao`, `args`, `parametro`, `comando`, `confirmar`,
 `ocupado`, `job`, `pedido`, `grande`, `interno`.
 
 ## 9. Ações
@@ -188,6 +188,10 @@ Pedido:
 ```json
 {"acao": "rodar", "comando": "notificar", "parametros": {"texto": "oi"}, "args": [], "seguir": true}
 ```
+
+- `confirmado: true` é obrigatório pra comandos com `CONFIRMAR = True`. Sem
+  ele, o agente responde o erro `confirmar`. Serve pra todo controlador
+  perguntar antes; não é barreira de segurança.
 
 - `parametros` só pra comandos com `PARAMETROS`. `args` só pra comandos com
   `ACEITA_ARGS = True` e sem `PARAMETROS`. Os dois juntos é erro.
@@ -231,7 +235,8 @@ Pedido: `{"acao": "historico", "limite": 20}` (1 a 50). Resposta: `historico`
 com `jobs`, uma lista de resumos (sem saída), do mais novo pro mais velho.
 
 Cada controlador só enxerga os próprios jobs. Job de outro controlador é
-tratado como inexistente em `status` e `cancelar`.
+tratado como inexistente em `status` e `cancelar`. O agente guarda os 50
+últimos **de cada** controlador.
 
 ## 10. Como o comando recebe os parâmetros
 
@@ -262,7 +267,9 @@ Comandos antigos com `ACEITA_ARGS = True` continuam recebendo `args` no
 | parâmetros                             | 32 por comando, texto até 4096 |
 | diferença de relógio                   | 60 s                      |
 | memória de nonces                      | 180 s, até 100 mil        |
-| conexões abertas no agente             | 32                        |
+| conexões abertas no agente             | 32 no total, 4 por IP     |
+| prazo pra mandar linha mágica + pedido | 15 s no total             |
+| regex de um parâmetro                  | 1 s, num processo à parte |
+| saída guardada pelo controlador        | 1 Mi caracteres por job   |
 | jobs em paralelo                       | 4 (configurável, `max_paralelo`) |
 | jobs guardados no histórico            | 50                        |
-| tempo pra mandar o pedido              | 15 s                      |

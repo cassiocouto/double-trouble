@@ -181,3 +181,11 @@ def test_resolved_fd_is_the_checked_file(make_cmd, base):
             assert f.read() == 'print("original")\n'
     finally:
         resolved.close()
+
+
+def test_notificar_example_ends_options():
+    """O texto do usuário vem depois de "--", então não vira opção do notify-send."""
+    from importlib import resources
+
+    code = (resources.files("ponte") / "data" / "exemplos" / "notificar.py").read_text()
+    assert '"--", f"Mensagem de {sender}", p["texto"]' in code

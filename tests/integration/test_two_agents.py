@@ -274,7 +274,7 @@ def test_pairing_by_code_between_processes(tmp_path):
                 code = line.split("código:", 1)[1].strip()
                 break
         assert code and len(code.replace(" ", "")) == 8
-        r = a.ponte("parear", "--com", "127.0.0.1", "--porta", str(pair_port), "--codigo", code)
+        r = a.ponte("parear", "--com", "127.0.0.1", "--porta", str(pair_port), stdin=code + "\n")
         assert "agora manda comandos pra maquina-b" in r.stdout
         out, err = window.communicate(timeout=10)
         assert window.returncode == 0, out + err
@@ -324,7 +324,7 @@ def test_pairing_wrong_code_from_cli(tmp_path):
             break
     wrong = "00000000" if code != "00000000" else "11111111"
     for _ in range(3):
-        r = a.ponte("parear", "--com", "127.0.0.1", "--porta", str(pair_port), "--codigo", wrong, check=False)
+        r = a.ponte("parear", "--com", "127.0.0.1", "--porta", str(pair_port), stdin=wrong + "\n", check=False)
         assert r.returncode == 4 and "código errado" in r.stderr
     out, _ = window.communicate(timeout=10)
     assert window.returncode == 1

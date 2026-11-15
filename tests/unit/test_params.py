@@ -113,3 +113,15 @@ def test_cli_values(kind, text, expected):
 def test_bad_cli_values(kind, text):
     with pytest.raises(ParamError):
         parse_cli_value({"nome": "a", "tipo": kind}, text)
+
+
+def test_regex_check_runs_out_of_process_with_timeout():
+    import time
+
+    from ponte.core.params import regex_fullmatch
+
+    assert regex_fullmatch("[a-z]+", "abc") and not regex_fullmatch("[a-z]+", "ABC")
+    t0 = time.monotonic()
+    with pytest.raises(ParamError, match="demorou demais"):
+        regex_fullmatch("(a+)+$", "a" * 40 + "!", timeout=0.5)
+    assert time.monotonic() - t0 < 3

@@ -14,6 +14,7 @@ from .errors import AuthError, ConnectionFailed, ProtocolError, RemoteError
 
 CONNECT_TIMEOUT = 10
 READ_TIMEOUT = 30  # o agente manda "vivo" a cada 10 s enquanto um job roda em silêncio
+MAX_KEPT_OUTPUT = 1024 * 1024  # caracteres de saída que o controlador guarda por job
 
 
 @dataclass
@@ -32,6 +33,8 @@ class RunOutcome:
     result: dict | None
     stdout: list[str] = field(default_factory=list)
     stderr: list[str] = field(default_factory=list)
+    kept: int = 0
+    truncated: bool = False
 
     @property
     def text_stdout(self) -> str:
@@ -184,8 +187,11 @@ class Client:
         args: list[str] | None = None,
         on_event: EventCallback | None = None,
         follow: bool = True,
+        confirmed: bool = False,
     ) -> RunOutcome:
         fields: dict = {"comando": command, "seguir": follow}
+        if confirmed:
+            fields["confirmado"] = True
         if params is not None:
             fields["parametros"] = params
         if args:
@@ -215,8 +221,16 @@ class Client:
             elif tipo == "saida":
                 data = frame.get("dados")
                 if isinstance(data, str):
-                    target = outcome.stderr if frame.get("fluxo") == "stderr" else outcome.stdout
-                    target.append(data)
+                    # O agente já corta em 256 KiB por fluxo. Este teto protege o
+                    # controlador de um agente que mande saída sem fim.
+                    room = MAX_KEPT_OUTPUT - outcome.kept
+                    if len(data) > room:
+                        data = data[: max(room, 0)]
+                        outcome.truncated = True
+                    if data:
+                        outcome.kept += len(data)
+                        target = outcome.stderr if frame.get("fluxo") == "stderr" else outcome.stdout
+                        target.append(data)
             elif tipo == "fim" and isinstance(frame.get("resultado"), dict):
                 outcome.result = frame["resultado"]
             if on_event:

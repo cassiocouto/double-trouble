@@ -5,6 +5,7 @@ Cada teste tenta quebrar uma regra de docs/SEGURANCA.md e confere que ela seguro
 
 from __future__ import annotations
 
+import itertools
 import os
 import secrets
 import socket
@@ -904,3 +905,147 @@ def test_inv11_slow_loris_gets_cut_by_total_deadline(agent, monkeypatch):
     s.close()
     assert closed
     assert time.monotonic() - t0 < 6
+
+
+# ==========================================================================
+# Achados da revisão de segurança (um teste pra cada)
+
+
+def _raw_from(ip_src: str, port: int, data: bytes, timeout: float = 10) -> bytes:
+    s = socket.socket()
+    s.bind((ip_src, 0))
+    s.settimeout(timeout)
+    s.connect(("127.0.0.1", port))
+    with s:
+        s.sendall(data)
+        out = bytearray()
+        while True:
+            try:
+                chunk = s.recv(65536)
+            except (ConnectionResetError, TimeoutError):
+                break
+            if not chunk:
+                break
+            out += chunk
+    return bytes(out)
+
+
+def test_review_one_ip_cannot_take_every_slot(agent):
+    """Um IP só fica com até 4 vagas. Outro IP continua sendo atendido."""
+    from ponte.agent.server import MAX_PER_IP
+
+    h = agent()
+    hogs = [socket.create_connection(("127.0.0.1", h.port)) for _ in range(MAX_PER_IP)]
+    try:
+        time.sleep(0.3)
+        extra = socket.create_connection(("127.0.0.1", h.port), timeout=5)
+        assert extra.recv(10) == b""  # o 5º do mesmo IP é cortado na hora
+        extra.close()
+        req = h.build("ping")
+        reply = _raw_from("127.0.0.2", h.port, protocol.MAGIC + protocol.encode_frame(req))
+        assert reply.startswith(protocol.MAGIC) and b'"pong"' in reply
+    finally:
+        for s in hogs:
+            s.close()
+
+
+def test_review_unknown_name_does_the_same_work(agent, monkeypatch):
+    """Nome desconhecido também calcula o MAC, pra o tempo não denunciar quais nomes existem."""
+    from ponte.agent import server
+
+    h = agent()
+    calls = []
+    real = server.protocol.verify
+
+    def counting(key, kind, obj):
+        calls.append(obj.get("de"))
+        return real(key, kind, obj)
+
+    monkeypatch.setattr(server.protocol, "verify", counting)
+    unsigned(h.raw_frames(h.build("ping", controller="intruso", key=os.urandom(32))))
+    assert calls == ["intruso"]
+
+
+def test_review_hostile_text_cannot_forge_logs_or_flood_audit(agent, capfd):
+    h = agent()
+    evil_key = "x" * 5000 + "\n2026-01-01 00:00:00 controle@1.2.3.4 rodando travar_tela"
+    body = ('{"a":1,' + f'"{evil_key}":1,"{evil_key}":2' + "}").encode()
+    h.raw(protocol.MAGIC + struct.pack(">I", len(body)) + body)
+    err = capfd.readouterr().err
+    assert "\n2026-01-01 00:00:00 controle" not in err
+    rec = [e for e in h.audit if e["evento"] == "pedido_ilegivel"][-1]
+    assert len(rec["detalhe"]) <= 201 and "\n" not in rec["detalhe"]
+
+
+def test_review_unauthenticated_audit_is_rate_limited(agent):
+    from ponte.agent.server import UNAUTH_AUDIT_PER_MINUTE
+
+    h = agent()
+    for _ in range(UNAUTH_AUDIT_PER_MINUTE + 15):
+        h.raw_frames(h.build("ping", key=os.urandom(32)))
+    anon = [e for e in h.audit if e["evento"] == "nao_autenticado"]
+    assert len(anon) == UNAUTH_AUDIT_PER_MINUTE
+    assert h.client().ping()  # quem tem o segredo continua normal
+
+
+def test_review_catastrophic_regex_does_not_freeze_agent(agent):
+    """Regex com backtracking explosivo só atrasa o próprio pedido, o resto do agente segue."""
+    h = agent()
+    h.make_cmd("lenta", 'PARAMETROS = [{"nome": "t", "tipo": "texto", "regex": "(a+)+$"}]\nprint("x")\n')
+    h.make_cmd("ticker", "import time\nfor i in range(20):\n    print(i, flush=True)\n    time.sleep(0.1)\n")
+    ticks = []
+    t = threading.Thread(target=lambda: h.client().run("ticker", on_event=lambda ev: ticks.append(time.monotonic())))
+    t.start()
+    time.sleep(0.2)
+    t0 = time.monotonic()
+    with pytest.raises(RemoteError, match="demorou demais"):
+        h.client().run("lenta", params={"t": "a" * 40 + "!"})
+    assert time.monotonic() - t0 < 5
+    t.join(10)
+    gaps = [b - a for a, b in itertools.pairwise(ticks)]
+    assert max(gaps) < 0.9, "o agente não pode congelar enquanto a regex roda"
+
+
+def test_review_confirmation_enforced_by_agent(agent):
+    h = agent()
+    h.make_cmd("perigo", 'CONFIRMAR = True\nprint("feito")\n')
+    with pytest.raises(RemoteError, match="pede confirmação"):
+        h.client().run("perigo")
+    assert h.client().run("perigo", confirmed=True).text_stdout == "feito\n"
+
+
+def test_review_history_is_not_shared_between_controllers(agent):
+    from ponte.agent.jobs import KEEP_FINISHED
+
+    h = agent()
+    other = os.urandom(32)
+
+    def add(cfg):
+        from ponte.core.config import ControllerEntry
+
+        cfg.agent.controllers["outro"] = ControllerEntry("outro", other)
+
+    h.update(add)
+    h.make_cmd("oi", "print(1)\n")
+    mine = h.client().run("oi").job
+    for _ in range(KEEP_FINISHED + 3):
+        h.client(name="outro", secret=other).run("oi")
+    assert h.client().status(mine).result["estado"] == "ok"
+    assert [j["job"] for j in h.client().history()] == [mine]
+
+
+def test_review_client_caps_output_from_a_hostile_agent():
+    chunk = "y" * 32_000
+
+    def frames(r):
+        out = [resp(KEY, r, 0, "aceito", job="j")]
+        for i in range(1, 60):
+            out.append(resp(KEY, r, i, dados=chunk, fluxo="stdout"))
+        out.append(resp(KEY, r, 60, "fim", True, resultado={"estado": "ok"}))
+        return out
+
+    from ponte.core.client import MAX_KEPT_OUTPUT
+
+    outcome = run_against(frames)
+    assert outcome.truncated
+    assert sum(map(len, outcome.stdout)) == MAX_KEPT_OUTPUT

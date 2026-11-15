@@ -25,7 +25,7 @@ from pathlib import Path
 from . import paths
 from .errors import ConfigError
 from .legacy import loads_strict
-from .safety import read_private_text, write_private
+from .safety import path_problem, read_private_text, write_private
 
 CONFIG_VERSION = 2
 DEFAULT_PORT = 47800
@@ -251,6 +251,10 @@ def default_config(name: str | None = None) -> Config:
 
 def load(path: Path | None = None) -> Config:
     path = path or paths.config_file()
+    # A pasta também precisa ser só sua: quem escreve nela pode trocar o arquivo.
+    folder_problem = path_problem(path.parent, private=False)
+    if folder_problem and folder_problem != "não existe":
+        raise ConfigError(f"a pasta {path.parent} {folder_problem}. Rode: chmod 700 {path.parent}")
     text = read_private_text(path, "o config")
     try:
         data = loads_strict(text)

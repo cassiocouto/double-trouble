@@ -33,6 +33,8 @@ from .execute import build_spec
 from .jobs import Busy, Job, JobManager
 
 MAX_CONNECTIONS = 32
+MAX_PER_IP = 4  # um IP sozinho não ocupa todas as vagas
+UNAUTH_AUDIT_PER_MINUTE = 30  # recusas de quem não se autenticou que vão pra auditoria, por minuto
 READ_TIMEOUT = 15  # prazo total pra receber a linha mágica e o pedido
 SEND_TIMEOUT = 15  # cada envio de resposta
 HEARTBEAT = 10
@@ -53,8 +55,18 @@ V1_REPLY = (
 )
 
 
+_CONTROL = {c: f"\\x{c:02x}" for c in [*range(32), 127]}
+
+
+def clean(text: object, limit: int = 200) -> str:
+    """Texto que pode ter vindo de fora: sem quebra de linha nem controle, e curto."""
+    out = str(text).translate(_CONTROL)
+    return out if len(out) <= limit else out[:limit] + "…"
+
+
 def log(msg: str) -> None:
-    print(time.strftime("%Y-%m-%d %H:%M:%S"), msg, file=sys.stderr, flush=True)
+    # Escapa controle: ninguém de fora consegue forjar uma linha nova no journal.
+    print(time.strftime("%Y-%m-%d %H:%M:%S"), clean(msg, 1000), file=sys.stderr, flush=True)
 
 
 AuditHook = Callable[[dict], None]
@@ -164,6 +176,12 @@ class AgentServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
         self.base_dir = base_dir
         self.nonces = protocol.NonceCache()
         self.conn_slots = threading.BoundedSemaphore(MAX_CONNECTIONS)
+        self._per_ip: dict[str, int] = {}
+        self._per_ip_lock = threading.Lock()
+        self._unauth_window = (0.0, 0)  # (início do minuto, quantos já foram gravados)
+        self._unauth_dropped = 0
+        self._unauth_lock = threading.Lock()
+        self._dummy_key = os.urandom(32)
         self.started = time.time()
         self.address_family = socket.AF_INET6 if ":" in host else socket.AF_INET
         super().__init__((host, port), Handler)
@@ -188,16 +206,37 @@ class AgentServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
             log(f"recusado {ip}, fora da lista de permitidos")
             self.audit_event("ip_recusado", ip)
             return False
-        if not self.conn_slots.acquire(blocking=False):
-            log(f"recusado {ip}, conexões demais abertas")
-            return False
+        with self._per_ip_lock:
+            if self._per_ip.get(ip, 0) >= MAX_PER_IP:
+                log(f"recusado {ip}, já tem {MAX_PER_IP} conexões abertas desse IP")
+                return False
+            if not self.conn_slots.acquire(blocking=False):
+                log(f"recusado {ip}, conexões demais abertas")
+                return False
+            self._per_ip[ip] = self._per_ip.get(ip, 0) + 1
         return True
+
+    def _release(self, ip: str) -> None:
+        with self._per_ip_lock:
+            left = self._per_ip.get(ip, 1) - 1
+            if left > 0:
+                self._per_ip[ip] = left
+            else:
+                self._per_ip.pop(ip, None)
+            self.conn_slots.release()
+
+    def process_request(self, request, client_address):
+        try:
+            super().process_request(request, client_address)
+        except Exception:
+            self._release(client_address[0])
+            raise
 
     def process_request_thread(self, request, client_address):
         try:
             super().process_request_thread(request, client_address)
         finally:
-            self.conn_slots.release()
+            self._release(client_address[0])
 
     def handle_error(self, request, client_address):  # pragma: no cover - Handler já trata tudo
         log(f"erro tratando conexão de {client_address[0]}")
@@ -207,16 +246,46 @@ class AgentServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
         """Confere quem mandou e a assinatura. Qualquer falha vira o mesmo erro genérico."""
         de = req.get("de")
         entry = cfg.agent.controllers.get(de) if isinstance(de, str) else None
-        if entry is None:
-            raise AuthError(protocol.UNAUTHENTICATED)
-        key = protocol.derive_key(entry.secret, entry.name, cfg.name)
-        if not protocol.verify(key, protocol.KIND_REQUEST, req):
+        # Nome desconhecido faz a mesma conta (com uma chave qualquer), pra o tempo
+        # de resposta não contar quais nomes existem.
+        secret = entry.secret if entry is not None else self._dummy_key
+        key = protocol.derive_key(secret, de if isinstance(de, str) else "", cfg.name)
+        valid = protocol.verify(key, protocol.KIND_REQUEST, req)
+        if entry is None or not valid:
             raise AuthError(protocol.UNAUTHENTICATED)
         return entry, key
+
+    UNAUTH_EVENTS = ("ip_recusado", "nao_autenticado", "pedido_ilegivel", "versao_diferente")
+
+    def _unauth_allowed(self) -> bool:
+        """No máximo UNAUTH_AUDIT_PER_MINUTE recusas anônimas por minuto vão pro arquivo.
+
+        Assim ninguém de fora apaga o histórico da auditoria só mandando lixo.
+        """
+        now = time.monotonic()
+        with self._unauth_lock:
+            start, count = self._unauth_window
+            if now - start >= 60:
+                dropped = self._unauth_dropped
+                self._unauth_window, self._unauth_dropped = (now, 1), 0
+            elif count >= UNAUTH_AUDIT_PER_MINUTE:
+                self._unauth_dropped += 1
+                return False
+            else:
+                self._unauth_window = (start, count + 1)
+                return True
+        if dropped and self.audit:
+            self.audit({"evento": "recusas_suprimidas", "quantas": dropped})
+        return True
 
     def audit_event(self, event: str, ip: str, **fields) -> None:
         if self.audit is None:
             return
+        if event in self.UNAUTH_EVENTS and not self._unauth_allowed():
+            return
+        for key in ("detalhe", "de", "comando"):
+            if key in fields and isinstance(fields[key], str):
+                fields[key] = clean(fields[key])
         try:
             self.audit({"evento": event, "ip": ip, **fields})
         except Exception as e:
@@ -314,6 +383,10 @@ class AgentServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
             return out.error(str(e), "comando")
         try:
             meta = resolved.meta
+            if meta.confirmar and req.get("confirmado") is not True:
+                # Não é barreira contra quem pegou o controlador (ele mandaria true). Garante
+                # que todo controlador pergunte antes, inclusive scripts e versões futuras.
+                return out.error(f"'{name}' pede confirmação: o controlador precisa perguntar antes", "confirmar")
             stdin_data = None
             clean_params = None
             if meta.parametros is not None:

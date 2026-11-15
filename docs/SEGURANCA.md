@@ -20,7 +20,7 @@ comandos, e não deixar ninguém derrubar o agente fácil.
 
 | Atacante | Tem o quê | O pior que deve conseguir |
 |---|---|---|
-| **Outro dispositivo do tailnet** | Rede até a porta do agente | Ver que o ponte existe ali, e ocupar conexões (limite de 32) |
+| **Outro dispositivo do tailnet** | Rede até a porta do agente | Ver que o ponte existe ali, e ocupar até 4 conexões por IP (32 no total) |
 | **Outro usuário local** da mesma máquina | Uma conta comum, sem root | Ver que o agente existe. Ver o `argv` dos comandos antigos (com `ACEITA_ARGS`). Atrapalhar um pareamento em andamento (gastando as 3 tentativas) |
 | **Quem pegou o controlador** (o notebook, o config) | O `ponte.json` do controlador, com o segredo da direção | Rodar os comandos que você já aprovou pra esse controlador, com os parâmetros que eles aceitam. Ver os jobs que esse controlador rodou |
 | Alguém com **root** em qualquer das duas máquinas | Tudo | Tudo. Fora do escopo |
@@ -50,6 +50,8 @@ validar). Testes: `test_inv2_listing_never_executes`,
 
 **3. Todo pedido é autenticado.**
 HMAC-SHA256 com uma chave derivada do segredo da direção e dos dois nomes.
+Pra um nome desconhecido o agente faz a mesma conta com uma chave qualquer,
+então o tempo de resposta não diz quais nomes existem.
 Pedido velho (mais de 60 s de diferença), nonce repetido (memória de 180 s) e
 `ts` que não é número são recusados. O JSON é estrito (sem `NaN`, sem chave
 repetida). Pra quem não se autenticou, o erro **não é assinado**, não tem
@@ -108,8 +110,16 @@ Testes: `test_inv10_*`.
 **11. Um pedido nunca derruba o agente.**
 Todo pedido roda numa thread com `try` em volta. Erro depois da autenticação
 vira um erro assinado ("erro interno"). Lixo, JSON inválido, conexões lentas
-e conexões demais (mais de 32) não param o agente.
-Testes: `test_inv11_*`.
+e conexões demais não param o agente. A linha mágica e o pedido têm 15 s **no
+total** pra chegar (quem manda um byte de vez em quando é cortado), cada IP
+tem no máximo 4 conexões abertas, e a regex de um `PARAMETROS` roda num
+processo à parte com limite de 1 s (o `re` do Python segura o GIL, e uma
+regex que trava congelaria o agente inteiro). Texto vindo de fora é cortado e
+tem os caracteres de controle escapados antes de ir pro log, então ninguém
+forja uma linha no journal. Recusas de quem não se autenticou vão pra
+auditoria no máximo 30 por minuto (o resto vira uma contagem), pra ninguém
+apagar o histórico da auditoria mandando lixo.
+Testes: `test_inv11_*`, `test_review_*`.
 
 ## Pareamento
 
@@ -138,7 +148,10 @@ pra testar.
 
 **Camadas extras.** O pareamento só aceita IPs da lista de permitidos. Se o
 `tailscale` existir, ele confere com `tailscale whois` que o IP é do nó com o
-nome que o controlador disse ter. Uma máquina não pode parear com o próprio
+nome que o controlador disse ter. Só vale o nome que o servidor de controle
+do Tailscale deu ao nó (`Node.Name`), dentro do **seu** tailnet. O nome que o
+próprio aparelho diz ter (`Hostinfo.Hostname`) não conta, e um nó
+compartilhado de outro tailnet com o mesmo nome também não passa. Uma máquina não pode parear com o próprio
 nome. Re-parear mantém as permissões de comandos que já existiam.
 
 **Ameaças que sobram no pareamento.**
@@ -157,6 +170,12 @@ nome. Re-parear mantém as permissões de comandos que já existiam.
 máquina que executa mostra um segredo, e `ponte maquina adicionar <nome>
 --segredo -` na que manda lê esse segredo. O segredo aparece na tela e passa
 pela sua área de transferência, então prefira o pareamento.
+
+**Nada de segredo no argv.** Segredo e código de pareamento só entram pelo
+terminal (sem eco) ou pelo stdin. A CLI recusa `--segredo <hex>`: os
+argumentos de qualquer processo aparecem pra todos os usuários da máquina
+(`/proc/<pid>/cmdline`), e o outro usuário local poderia copiar o segredo ou
+usar o código antes de você.
 
 ## Quem pegou o controlador
 
@@ -189,6 +208,9 @@ nas duas direções**.
 - Não escreve na pasta de comandos (escrita aberta bloqueia tudo).
 - Pode conectar na porta do agente pelo IP do Tailscale, mas sem segredo
   recebe só o erro sem assinatura.
+- Se ele estiver na **máquina controladora**, sai pelo mesmo IP que você. Aí
+  ele pode ocupar as 4 vagas desse IP e atrasar os seus pedidos. Isso é
+  negação de serviço, não acesso.
 - Vê no `ps` os **argumentos** de comandos antigos (`ACEITA_ARGS`). Por isso
   o `PARAMETROS` manda os valores pelo stdin. Prefira `PARAMETROS` pra
   qualquer coisa sensível, e marque com `"segredo": True` (a auditoria guarda
@@ -214,13 +236,21 @@ regras do agente.
 - **Comandos mal escritos.** Um comando aprovado que faz algo perigoso com os
   parâmetros (montar uma linha de shell com eles, por exemplo) é problema do
   comando. Os exemplos mostram como fazer direito.
-- **Regex catastrófica** num `PARAMETROS`. A regex é sua e roda no agente
-  contra um texto de até 4096 caracteres. Uma regex com backtracking
-  exponencial (tipo `(a+)+$`) pode prender uma thread do agente. Use regex
-  simples.
-- **Negação de serviço** por quem está no tailnet: dá pra ocupar as 32
-  conexões. O agente continua de pé e volta quando elas fecham (15 s de
-  tempo limite pra mandar o pedido).
+- **Regex lenta** num `PARAMETROS`. Ela roda num processo à parte com
+  limite de 1 s, então não trava o agente, mas o pedido falha ("demorou
+  demais"). Use regex simples.
+- **Processo que sai do grupo de propósito.** O timeout mata o grupo de
+  processos do comando. Um programa que chama `setsid` ou vira daemon sai do
+  grupo e não é morto no timeout (é assim que o `soltar()` funciona). Como só
+  roda código que você aprovou, isso é escolha do comando. Um cgroup por job
+  (`systemd-run --scope`) fecharia esse caso; ficou como melhoria futura.
+- **`CONFIRMAR` não é uma barreira.** O agente exige `"confirmado": true`
+  pra esses comandos, o que obriga todo controlador (CLI, interface, scripts)
+  a perguntar antes. Mas quem pegou o controlador pode mandar `true`. Pra
+  impedir de verdade, tire o comando das permissões desse controlador.
+- **Negação de serviço** por vários aparelhos do tailnet juntos: com 8 IPs
+  diferentes dá pra ocupar as 32 vagas. O agente continua de pé e volta
+  quando elas fecham (cada uma dura no máximo 15 s sem mandar o pedido).
 - **Relógio.** Se o relógio de uma máquina andar mais de 60 s, os pedidos são
   recusados ("relógios fora de sincronia"). Deixe o NTP ligado
   (`timedatectl`).

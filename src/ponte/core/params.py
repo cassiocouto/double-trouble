@@ -16,7 +16,10 @@ Exemplo no arquivo do comando
 
 from __future__ import annotations
 
+import json
 import re
+import subprocess
+import sys
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -33,6 +36,34 @@ MAX_OPTIONS = 100
 MAX_OPTION_CHARS = 200
 MAX_REGEX = 500
 INT_LIMIT = 2**53  # cabe num número JSON sem perder precisão
+REGEX_TIMEOUT = 1.0  # segundos pra conferir um texto contra a regex do comando
+
+# A regex roda num processo separado: o `re` do Python segura o GIL, então uma
+# regex que trava (backtracking) congelaria o agente inteiro, inclusive os
+# timeouts dos outros jobs. Num processo à parte ela só atrasa esse pedido.
+_MATCHER = (
+    "import json, re, sys\nd = json.loads(sys.stdin.read())\nsys.exit(0 if re.fullmatch(d['p'], d['v']) else 1)\n"
+)
+
+
+def regex_fullmatch(pattern: str, value: str, timeout: float | None = None) -> bool:
+    try:
+        r = subprocess.run(
+            [sys.executable, "-I", "-S", "-c", _MATCHER],
+            input=json.dumps({"p": pattern, "v": value}),
+            capture_output=True,
+            text=True,
+            timeout=REGEX_TIMEOUT if timeout is None else timeout,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        raise ParamError("a conferência do formato demorou demais (a regex do comando é lenta)") from None
+    except OSError as e:
+        raise ParamError(f"não consegui conferir o formato ({e.strerror or e})") from None
+    if r.returncode not in (0, 1):
+        raise ParamError("não consegui conferir o formato")
+    return r.returncode == 0
+
 
 COMMON_KEYS = {"nome", "tipo", "rotulo", "ajuda", "obrigatorio", "padrao"}
 KEYS_BY_TYPE = {
@@ -108,7 +139,7 @@ class ParamSpec:
                 raise ParamError(f"'{label}' passou de {limit} caracteres")
             if self.min is not None and len(value) < self.min:
                 raise ParamError(f"'{label}' precisa de pelo menos {self.min} caracteres")
-            if self._compiled is not None and not self._compiled.fullmatch(value):
+            if self.regex is not None and not regex_fullmatch(self.regex, value):
                 raise ParamError(f"'{label}' não está no formato esperado")
             return value
         if self.tipo == "inteiro":

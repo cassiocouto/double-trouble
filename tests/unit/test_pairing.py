@@ -199,7 +199,11 @@ def test_window_refuses_ip_outside_list(tmp_path):
 
 def test_window_checks_tailscale_node(tmp_path, monkeypatch):
     script = tmp_path / "tailscale"
-    script.write_text('#!/bin/sh\necho \'{"Node": {"ComputedName": "intruso"}}\'\n')
+    script.write_text(
+        "#!/bin/sh\n"
+        'if [ "$1" = whois ]; then echo \'{"Node": {"Name": "intruso.tail1.ts.net."}}\'; fi\n'
+        'if [ "$1" = status ]; then echo \'{"Self": {"DNSName": "agente.tail1.ts.net."}}\'; fi\n'
+    )
     os.chmod(script, 0o700)
     monkeypatch.setenv("PONTE_TAILSCALE", str(script))
     cfg, _ = agent_config(tmp_path)

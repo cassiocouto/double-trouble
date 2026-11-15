@@ -65,7 +65,8 @@ def loads_strict(raw: bytes | str) -> object:
         out = {}
         for k, v in pairs:
             if k in out:
-                raise ValueError(f"chave repetida '{k}'")
+                # Não repete o nome da chave: ele vem de fora e pode ser enorme.
+                raise ValueError("chave repetida")
             out[k] = v
         return out
 

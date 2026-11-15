@@ -123,6 +123,7 @@ class ControllerService:
         on_event: Callable[[dict], None],
         on_done: Callable[[Any], None],
         on_error: Callable[[str], None],
+        confirmed: bool = False,
     ) -> RunHandle:
         handle = RunHandle(machine=machine, command=command)
 
@@ -134,7 +135,7 @@ class ControllerService:
         def work():
             handle.client = self.client(machine)
             try:
-                return handle.client.run(command, params, args, forward)
+                return handle.client.run(command, params, args, forward, confirmed=confirmed)
             finally:
                 handle.finished = True
 

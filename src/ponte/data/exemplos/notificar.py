@@ -17,5 +17,6 @@ sender = quem_chamou() or "a outra máquina"
 cmd = ["notify-send", "--app-name=Ponte"]
 if p["urgente"]:
     cmd.append("--urgency=critical")
-subprocess.run([*cmd, f"Mensagem de {sender}", p["texto"]], check=True)
+# O "--" impede que um texto começando com "-" vire opção do notify-send.
+subprocess.run([*cmd, "--", f"Mensagem de {sender}", p["texto"]], check=True)
 print("notificação mostrada")

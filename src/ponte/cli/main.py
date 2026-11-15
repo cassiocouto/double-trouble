@@ -16,7 +16,6 @@ import contextlib
 import getpass
 import queue
 import secrets
-import shutil
 import sys
 import threading
 import time
@@ -68,14 +67,24 @@ def load_cfg() -> config_mod.Config:
     return config_mod.load(path)
 
 
+ARGV_WARNING = (
+    "por segurança, segredo e código não vão na linha de comando (outros usuários da máquina "
+    "veem os argumentos no ps). Use --segredo - e cole quando pedir, ou mande pelo stdin"
+)
+
+
 def read_secret(value: str | None, prompt: str) -> str:
-    if value == "-":
-        if sys.stdin.isatty():
-            return getpass.getpass(prompt)
-        return sys.stdin.readline().strip()
-    if value:
-        return value
-    return getpass.getpass(prompt)
+    """Lê segredo ou código do terminal (sem eco) ou do stdin. Nunca do argv."""
+    if value not in (None, "-"):
+        raise Exit(2, ARGV_WARNING)
+    if sys.stdin.isatty():
+        return getpass.getpass(prompt)
+    return sys.stdin.readline().strip()
+
+
+def write_backup(source, target) -> None:
+    """Cópia com modo 600 desde o primeiro byte (o copy2 deixaria uma janela aberta)."""
+    write_private(target, source.read_bytes(), mode=0o600)
 
 
 def install_examples(force: bool = False) -> list[str]:
@@ -91,7 +100,7 @@ def install_examples(force: bool = False) -> list[str]:
             continue
         if target.exists():
             backup = target.with_name(f"{item.name}.bak-{time.strftime('%Y%m%d-%H%M%S')}")
-            shutil.copy2(target, backup)
+            write_backup(target, backup)
         write_private(target, item.read_text(encoding="utf-8"), mode=0o600)
         created.append(item.name[:-3])
     return created
@@ -105,7 +114,7 @@ def cmd_init(a) -> None:
     paths.ensure_private_dir(base)
     if path.exists():
         backup = path.with_name(f"{path.name}.bak-{time.strftime('%Y%m%d-%H%M%S')}")
-        shutil.copy2(path, backup)
+        write_backup(path, backup)
         say(f"backup do config anterior em {backup}")
     cfg = config_mod.default_config(a.nome)
     if a.escutar:
@@ -235,9 +244,14 @@ def cmd_rodar(a) -> None:
         args = []
     elif a.param:
         raise Exit(2, f"'{a.comando}' não tem PARAMETROS, passe argumentos soltos")
-    if meta.get("confirmar") and not confirm(f"Rodar '{a.comando}' em {c.machine.name}?", a.sim):
+    confirmed = bool(meta.get("confirmar"))
+    if confirmed and not confirm(f"Rodar '{a.comando}' em {c.machine.name}?", a.sim):
         raise Exit(1, "cancelado, nada foi rodado")
-    stream_run(c, a, lambda client, on_event: client.run(a.comando, params, args, on_event, not a.sem_esperar))
+    stream_run(
+        c,
+        a,
+        lambda client, on_event: client.run(a.comando, params, args, on_event, not a.sem_esperar, confirmed),
+    )
 
 
 def stream_run(c: Client, a, start) -> None:
@@ -383,7 +397,7 @@ def cmd_maquina_remover(a) -> None:
 
 def cmd_agente_autorizar(a) -> None:
     name = config_mod.check_machine_name(config_mod.normalize_machine_name(a.nome))
-    if a.segredo:
+    if a.segredo is not None:
         secret = config_mod.parse_secret(read_secret(a.segredo, f"segredo de {name}: "), name)
         generated = False
     else:
@@ -433,7 +447,7 @@ def cmd_parear(a) -> None:
 
     if a.com:
         cfg = load_cfg()
-        code = a.codigo or input("Código que apareceu na outra máquina: ")
+        code = read_secret(None, "Código que apareceu na outra máquina: ")
         port = a.porta or config_mod.DEFAULT_PORT + 1
         say(f"pareando com {a.com}...")
         paired = pairing.pair_with(cfg.name, a.com, port, code)
@@ -549,7 +563,7 @@ def build_parser() -> argparse.ArgumentParser:
     m.add_argument("nome")
     m.add_argument("--endereco", help="padrão: o próprio nome (MagicDNS)")
     m.add_argument("--porta", type=int, default=config_mod.DEFAULT_PORT)
-    m.add_argument("--segredo", help="hex, ou - pra ler do stdin")
+    m.add_argument("--segredo", nargs="?", const="-", help="lê o segredo do stdin (ou pergunta, sem mostrar)")
     m.set_defaults(func=cmd_maquina_adicionar)
     m = msub.add_parser("remover")
     m.add_argument("nome")
@@ -559,7 +573,9 @@ def build_parser() -> argparse.ArgumentParser:
     asub = s.add_subparsers(dest="sub", required=True)
     m = asub.add_parser("autorizar")
     m.add_argument("nome")
-    m.add_argument("--segredo", help="hex, ou - pra ler do stdin (padrão: gera um novo)")
+    m.add_argument(
+        "--segredo", nargs="?", const="-", help="usa um segredo já existente, lido do stdin (padrão: gera um novo)"
+    )
     m.add_argument("--comandos", help='lista separada por vírgula, ou "*" pra todos (padrão)')
     m.add_argument("--no-tailscale", help="nome do nó no tailscale, se for diferente")
     m.set_defaults(func=cmd_agente_autorizar)
@@ -576,7 +592,6 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument(
         "--com", metavar="ENDERECO", help="(na máquina que MANDA) endereço da outra, ex.: cass-dell-g15-5511"
     )
-    s.add_argument("--codigo", help="o código que apareceu na outra (padrão: pergunta)")
     s.add_argument("--porta", type=int, help="porta de pareamento (padrão 47801)")
     s.add_argument("--tempo", type=float, default=120, help="(na máquina que EXECUTA) segundos de janela aberta")
     s.add_argument("--escutar", help="(na máquina que EXECUTA) IP pra escutar, se não for o do Tailscale")
