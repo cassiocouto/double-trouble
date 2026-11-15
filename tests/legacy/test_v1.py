@@ -138,9 +138,8 @@ def test_bad_nonce_rejected(v1):
 
 
 def only_legacy_fails(request, v1, reason):
-    """O bug existe no ponte.py original. No pacote ele foi corrigido."""
-    if v1.impl == "legacy":
-        request.node.add_marker(pytest.mark.xfail(strict=True, reason=reason))
+    """O bug existe no ponte.py original. O v2 tem o teste equivalente passando."""
+    request.node.add_marker(pytest.mark.xfail(strict=True, reason=reason))
 
 
 def test_v1_bug_non_ascii_mac_gets_signed_reply(request, v1):

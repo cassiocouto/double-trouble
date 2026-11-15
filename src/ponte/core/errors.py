@@ -30,6 +30,10 @@ class AuthError(PonteError):
 class RemoteError(PonteError):
     """A outra máquina respondeu com erro (assinado)."""
 
+    def __init__(self, message: str, code: str = ""):
+        super().__init__(message)
+        self.code = code
+
 
 class ConnectionFailed(PonteError):
     """Não deu pra falar com a outra máquina."""

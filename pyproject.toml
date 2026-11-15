@@ -26,7 +26,7 @@ ponte-gui = "ponte.gui.app:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-ponte = ["data/*"]
+ponte = ["data/*", "data/exemplos/*.py"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -42,5 +42,5 @@ select = ["E", "F", "W", "I", "B", "UP", "S", "SIM", "RUF"]
 ignore = ["S101", "S603", "S607", "RUF001", "RUF002", "RUF003", "SIM105"]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["S", "B"]
+"tests/**" = ["S", "B", "SIM115", "RUF043", "E501"]
 "legacy/**" = ["ALL"]

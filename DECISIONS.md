@@ -70,3 +70,80 @@ usuário vê. O servidor em modo v1 tira os acentos, pra não quebrar scripts.
 **D12. JSON estrito.**
 Sem `NaN`, sem `Infinity` e sem chave repetida. Isso fecha o bug do `ts=NaN`
 e tira a ambiguidade de qual valor vale numa chave repetida.
+
+## Fase 2
+
+**D13. Uma linha mágica antes dos frames.**
+O controlador manda `PONTE/2\n` e o agente devolve a mesma. Isso dá erro
+claro nos dois sentidos: um cliente v1 recebe uma linha JSON no formato dele
+dizendo pra atualizar, e um controlador v2 falando com o ponte.py antigo
+avisa que "pode ser o v1". Custa 8 bytes.
+
+**D14. Um pedido por conexão, várias respostas.**
+Simplifica a amarração nonce + seq: cada conexão tem um nonce só e o seq
+começa em 0. O cancelamento usa outra conexão. Conexão nova pelo Tailscale
+custa pouco.
+
+**D15. Um segredo por direção, e chave derivada com os dois nomes.**
+O pedido diz "um segredo por par". Usei um por par **ordenado**
+(controlador → agente). Assim "a G15 pode mandar na brasil" e "a brasil pode
+mandar na G15" são decisões separadas, e revogar uma não mexe na outra. Por
+cima disso, a chave de assinatura é derivada do segredo com os nomes das duas
+pontas. Com isso, mesmo o config migrado do v1 (mesmo segredo nas duas
+direções) não aceita um pedido refletido de uma direção na outra.
+
+**D16. Controlador desconhecido e assinatura errada dão a mesma resposta.**
+Sem assinatura, sem nonce, mesma mensagem. Ninguém de fora descobre quais
+nomes o agente aceita.
+
+**D17. Parâmetros chegam pelo stdin, como JSON.**
+argv aparece no `ps` pra outros usuários da máquina (está no modelo de
+ameaça). Variável de ambiente vaza pros filhos e tem limite de tamanho. O
+stdin é privado. O agente escreve o JSON num arquivo temporário já apagado
+e passa como stdin, pra nunca travar se o comando não ler. O helper é
+`ponte.comando.parametros()`.
+
+**D18. PARAMETROS inválido bloqueia o comando.**
+Se o esquema não for um literal, ou tiver erro (tipo desconhecido, regex
+quebrada, padrão que não passa na própria regra, chave desconhecida), o
+comando fica bloqueado com o motivo. Ignorar faria o comando rodar sem as
+checagens que o autor pediu. Chave desconhecida é erro pra pegar erro de
+digitação (`obrigatoria` em vez de `obrigatorio`).
+
+**D19. Texto de uma linha não aceita caracteres de controle.**
+Só `multilinha: True` aceita `\n` e `\t`. Isso evita sequências de escape de
+terminal e quebras de linha inesperadas em comandos que montam texto.
+
+**D20. Config quebrado ou inseguro faz o agente recusar tudo.**
+O agente recarrega o `ponte.json` sozinho quando o arquivo muda. Se o novo
+estiver com erro, ou com permissão aberta, ele não segue com o config
+anterior: recusa todas as conexões até alguém consertar, e avisa no log. Um
+config que ficou legível por outros pode ter vazado segredo.
+
+**D21. Job continua se o controlador cair.**
+O job tem timeout próprio, então não fica órfão (invariante 9). Se a
+interface fechar sem querer, o job termina e o resultado fica no histórico
+pra consultar com `status`. Pra parar, existe o `cancelar`.
+
+**D22. Cada controlador só vê os próprios jobs.**
+`status`, `cancelar` e `historico` filtram pelo controlador. Job de outro é
+tratado como inexistente. Quem pegou um controlador não lê a saída dos jobs
+de outro.
+
+**D23. Chunks de saída "selados".**
+O agente junta pedaços pequenos de saída pra mandar menos frames. Um pedaço
+que alguém já recebeu nunca muda depois, então quem acompanha ao vivo nunca
+perde texto.
+
+**D24. A CLI cancela o job no primeiro Ctrl+C.**
+O primeiro Ctrl+C manda `cancelar` e espera o fim (mostrando o que faltar).
+O segundo sai na hora e o job pode continuar lá. A rede roda numa thread
+separada, então o Ctrl+C nunca corta uma resposta no meio.
+
+**D25. Argumentos soltos na CLI viram parâmetros, em ordem.**
+`ponte rodar g15 notificar "oi"` continua funcionando como no v1: o "oi" vai
+pro primeiro parâmetro que faltar. Também dá pra usar `-p texto=oi`.
+
+**D26. O comando `status` do exemplo é o único que os testes rodam.**
+Ele só lê `/proc` e o disco. `notificar`, `travar_tela` e `abrir_url` nunca
+rodam nos testes (mexem na tela). Os outros testes usam comandos falsos.

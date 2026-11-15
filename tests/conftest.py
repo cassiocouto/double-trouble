@@ -59,3 +59,20 @@ def make_cmd(base):
         return p
 
     return make
+
+
+@pytest.fixture
+def agent(tmp_path):
+    """Fábrica de agentes v2 em threads, cada um com pasta própria. Controlador padrão: 'controle'."""
+    from .helpers import AgentHarness
+
+    harnesses = []
+
+    def make(**opts):
+        h = AgentHarness(tmp_path / f"agente{len(harnesses)}", **opts)
+        harnesses.append(h)
+        return h
+
+    yield make
+    for h in harnesses:
+        h.stop()

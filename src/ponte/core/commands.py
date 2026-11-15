@@ -14,29 +14,43 @@ from pathlib import Path
 
 from . import paths
 from .errors import CommandError
+from .params import ParamSpec, parse_schema
 from .safety import OpenedCommand, open_command_file
 
 NAME_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
+ICON_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,99}$")
+_CONTROL = re.compile(r"[\x00-\x1f\x7f]")
 
 DEFAULT_TIMEOUT = 60
 MAX_TIMEOUT = 3600
 MAX_DESCRIPTION = 200
+MAX_DETAILS = 2000
+MAX_CATEGORY = 40
 
-METADATA_NAMES = ("ACEITA_ARGS", "TIMEOUT")
+METADATA_NAMES = ("ACEITA_ARGS", "TIMEOUT", "PARAMETROS", "CONFIRMAR", "ICONE", "CATEGORIA")
 
 
 @dataclass
 class CommandMeta:
     nome: str
     descricao: str = ""
+    detalhes: str = ""
     aceita_args: bool = False
     timeout: float = DEFAULT_TIMEOUT
+    parametros: list[ParamSpec] | None = None
+    confirmar: bool = False
+    icone: str = ""
+    categoria: str = ""
     avisos: list[str] = field(default_factory=list)
 
     def to_wire(self) -> dict:
         data = asdict(self)
-        if not data["avisos"]:
-            data.pop("avisos")
+        data["parametros"] = None if self.parametros is None else [p.to_wire() for p in self.parametros]
+        for key in ("avisos", "detalhes", "icone", "categoria"):
+            if not data[key]:
+                data.pop(key)
+        if data["parametros"] is None:
+            data.pop("parametros")
         return data
 
 
@@ -76,12 +90,17 @@ def parse_metadata(name: str, source: bytes) -> CommandMeta:
     meta = CommandMeta(nome=name)
     doc = (ast.get_docstring(tree) or "").strip()
     if doc:
-        meta.descricao = doc.splitlines()[0][:MAX_DESCRIPTION]
+        first, _, rest = doc.partition("\n")
+        meta.descricao = first.strip()[:MAX_DESCRIPTION]
+        meta.detalhes = rest.strip()[:MAX_DETAILS]
 
     for key, node in _literal_assignments(tree).items():
         try:
             value = ast.literal_eval(node)
         except (ValueError, TypeError, SyntaxError, MemoryError, RecursionError):
+            if key == "PARAMETROS":
+                # Sem o esquema não dá pra validar nada, então o comando fica bloqueado.
+                raise CommandError(f"'{name}' tem PARAMETROS que não é um valor literal") from None
             meta.avisos.append(f"{key} não é um valor literal e foi ignorado")
             continue
         if key == "ACEITA_ARGS":
@@ -94,6 +113,30 @@ def parse_metadata(name: str, source: bytes) -> CommandMeta:
                 meta.timeout = value
             else:
                 meta.avisos.append(f"TIMEOUT precisa ser um número entre 0 e {MAX_TIMEOUT}")
+        elif key == "PARAMETROS":
+            # Erro no esquema bloqueia o comando. Ignorar faria ele rodar sem as checagens.
+            try:
+                meta.parametros = parse_schema(value)
+            except ValueError as e:
+                raise CommandError(f"'{name}' tem PARAMETROS inválido ({e})") from None
+        elif key == "CONFIRMAR":
+            if isinstance(value, bool):
+                meta.confirmar = value
+            else:
+                meta.avisos.append("CONFIRMAR precisa ser True ou False")
+        elif key == "ICONE":
+            if isinstance(value, str) and ICON_RE.fullmatch(value):
+                meta.icone = value
+            else:
+                meta.avisos.append("ICONE precisa ser um nome de ícone do tema, como 'computer-symbolic'")
+        elif key == "CATEGORIA":
+            if isinstance(value, str) and 0 < len(value) <= MAX_CATEGORY and not _CONTROL.search(value):
+                meta.categoria = value.strip()
+            else:
+                meta.avisos.append(f"CATEGORIA precisa ser um texto de até {MAX_CATEGORY} caracteres")
+    if meta.parametros is not None and meta.aceita_args:
+        meta.aceita_args = False
+        meta.avisos.append("com PARAMETROS, ACEITA_ARGS é ignorado (os valores vão pelo stdin)")
     return meta
 
 
