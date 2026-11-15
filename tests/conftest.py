@@ -17,6 +17,9 @@ def isolated_dirs(tmp_path, monkeypatch):
     monkeypatch.setenv("PONTE_STATE_DIR", str(tmp_path / "estado"))
     monkeypatch.setenv("PONTE_DATA_DIR", str(tmp_path / "dados"))
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    # Comandos rodam num processo filho e importam ponte.comando, como no venv instalado.
+    src = str(Path(__file__).resolve().parents[1] / "src")
+    monkeypatch.setenv("PYTHONPATH", src)
     # Sem sessao grafica: nenhum teste deve conseguir mexer na tela.
     for key in ("DISPLAY", "WAYLAND_DISPLAY", "DBUS_SESSION_BUS_ADDRESS"):
         monkeypatch.delenv(key, raising=False)

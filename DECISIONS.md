@@ -227,3 +227,49 @@ A migração não mexe na pasta de comandos. Os exemplos antigos continuam
 funcionando (o `ACEITA_ARGS` ainda vale). Pra trocar pelas versões novas,
 com `PARAMETROS`, existe esse comando. Ele pergunta antes e guarda os antigos
 como `.bak`.
+
+## Fase 4
+
+**D38. A interface não foi aberta nesta máquina.**
+Instalar GTK 4 aqui precisaria de `apt` como root, e isso foi bloqueado (e
+você pediu pra perguntar antes de sudo). Por isso a interface foi escrita
+com cuidado em cima da libadwaita 1.5, e testada assim:
+- toda a lógica (serviço, view-models, formulário, histórico) é Python puro,
+  com 25 testes contra agentes de verdade;
+- um teste confere que só uso widgets que existem na libadwaita 1.5;
+- um smoke test abre o app numa tela falsa (Xvfb), roda um comando e fecha.
+  Aqui ele pula. Nas suas máquinas, com os pacotes do apt, ele roda.
+O primeiro teste de verdade da tela vai ser nas suas máquinas.
+
+**D39. Lógica separada dos widgets.**
+Só `app.py`, `window.py`, `pages.py`, `dialogs.py` e `widgets.py` importam o
+`gi`. Um teste confere isso. Os view-models avisam a tela por um `Signal`
+simples, e o serviço entrega os resultados da rede por um `dispatch` (na
+tela, `GLib.idle_add`). A rede nunca roda na thread da tela.
+
+**D40. Texto do agente nunca vira markup.**
+As linhas do libadwaita interpretam markup por padrão. Um nome ou descrição
+com `<` vindo do agente poderia quebrar a tela ou mudar o que aparece. O
+helper `row()` desliga o markup, e o resto do texto é escapado. Um teste
+confere que as telas usam o helper.
+
+**D41. Formulário validado com o mesmo código do agente.**
+A tela monta os `ParamSpec` a partir da lista do agente e valida com
+`core.params`, o mesmo código que o agente usa. O erro aparece embaixo do
+campo, antes de qualquer rede. O agente valida de novo de qualquer jeito.
+Comandos antigos com `ACEITA_ARGS` ganham uma caixa "um argumento por linha".
+Não existe campo de comando livre em lugar nenhum.
+
+**D42. Texto obrigatório não pode ficar vazio.**
+Antes o agente aceitava `""` num texto obrigatório. Agora recusa ("não pode
+ficar vazio"). Vale pra CLI, interface e agente.
+
+**D43. Histórico em SQLite, sem segredos.**
+`~/.local/share/ponte/historico.sqlite3`, modo 600. Guarda até 1000
+execuções. Parâmetros marcados como `segredo` ficam como `***` e nunca são
+preenchidos de novo no "Rodar de novo". Uma execução que estava rodando
+quando a janela fechou aparece como "Sem resultado".
+
+**D44. Notificação só pra job longo e janela sem foco.**
+Acima de 10 s, se a janela não estiver em foco, o app manda uma notificação
+do desktop. Clicar nela traz a janela de volta.

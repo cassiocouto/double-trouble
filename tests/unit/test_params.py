@@ -72,6 +72,14 @@ def test_required_without_default():
         validate_values(specs, {"a": None})
 
 
+def test_required_text_cannot_be_empty():
+    specs = parse_schema([{"nome": "a", "tipo": "texto", "obrigatorio": True}])
+    with pytest.raises(ParamError, match="vazio"):
+        validate_values(specs, {"a": ""})
+    optional = parse_schema([{"nome": "a", "tipo": "texto"}])
+    assert validate_values(optional, {"a": ""}) == {"a": ""}
+
+
 def test_text_default_limit():
     specs = parse_schema([{"nome": "a", "tipo": "texto"}])
     validate_values(specs, {"a": "x" * 4096})

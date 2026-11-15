@@ -98,6 +98,8 @@ class ParamSpec:
                 raise ParamError(f"'{label}' precisa ser texto")
             if "\x00" in value:
                 raise ParamError(f"'{label}' tem um byte nulo")
+            if self.obrigatorio and value == "":
+                raise ParamError(f"'{label}' não pode ficar vazio")
             bad = _CONTROL if self.multilinha else _CONTROL_SINGLE_LINE
             if bad.search(value):
                 raise ParamError(f"'{label}' tem caracteres de controle")
