@@ -214,9 +214,7 @@ class AgentServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
             log(f"falha gravando auditoria ({e!r})")
 
     # -- pedidos autenticados ---------------------------------------------
-    def dispatch(
-        self, cfg: Config, entry: ControllerEntry, req: dict, out: protocol.Responder, ip: str
-    ) -> None:
+    def dispatch(self, cfg: Config, entry: ControllerEntry, req: dict, out: protocol.Responder, ip: str) -> None:
         if req.get("v") != protocol.PROTOCOL:
             return out.error("versão de protocolo diferente. Atualize o ponte nas duas máquinas", "versao")
         if req.get("para") != cfg.name:
@@ -296,8 +294,7 @@ class AgentServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
             or not all(isinstance(a, str) and len(a) <= MAX_ARG_CHARS and "\x00" not in a for a in args)
         ):
             return out.error(
-                f"argumentos inválidos (no máximo {MAX_ARGS}, cada um até "
-                f"{MAX_ARG_CHARS} caracteres, sem byte nulo)",
+                f"argumentos inválidos (no máximo {MAX_ARGS}, cada um até {MAX_ARG_CHARS} caracteres, sem byte nulo)",
                 "args",
             )
         try:
@@ -322,12 +319,11 @@ class AgentServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
                 if params not in (None, {}):
                     return out.error(f"'{name}' não declara PARAMETROS", "parametro")
                 if args and not meta.aceita_args:
-                    return out.error(
-                        f"'{name}' não aceita argumentos (ponha ACEITA_ARGS = True no arquivo)", "args"
-                    )
+                    return out.error(f"'{name}' não aceita argumentos (ponha ACEITA_ARGS = True no arquivo)", "args")
             spec = build_spec(resolved, args, entry.name, meta.timeout, stdin_data=stdin_data)
+            shown = _redact(meta.parametros, clean_params)  # o job guarda só a versão pra log
             try:
-                job = self.jobs.start(entry.name, name, spec, clean_params, args)
+                job = self.jobs.start(entry.name, name, spec, shown, args)
             except Busy as e:
                 return out.error(str(e), "ocupado")
         finally:
@@ -339,7 +335,7 @@ class AgentServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
             de=entry.name,
             comando=name,
             job=job.id,
-            parametros=_redact(meta.parametros, clean_params),
+            parametros=shown,
             args=[a[:200] for a in args],
         )
         out.send("aceito", fim=not follow, job=job.id, comando=name, timeout=meta.timeout)

@@ -69,9 +69,7 @@ def loads_strict(raw: bytes | str) -> object:
             out[k] = v
         return out
 
-    return json.loads(
-        raw, parse_constant=_reject_constant, parse_float=_finite_float, object_pairs_hook=no_dupes
-    )
+    return json.loads(raw, parse_constant=_reject_constant, parse_float=_finite_float, object_pairs_hook=no_dupes)
 
 
 def send_line(sock: socket.socket, obj: dict) -> None:

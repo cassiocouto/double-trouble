@@ -147,3 +147,83 @@ pro primeiro parâmetro que faltar. Também dá pra usar `-p texto=oi`.
 **D26. O comando `status` do exemplo é o único que os testes rodam.**
 Ele só lê `/proc` e o disco. `notificar`, `travar_tela` e `abrir_url` nunca
 rodam nos testes (mexem na tela). Os outros testes usam comandos falsos.
+
+## Fase 3
+
+**D27. READY=1 só depois de escutar, mas com prazo de 30 s.**
+Com `Type=notify`, o `systemctl start` espera o READY. Se o Tailscale ainda
+não subiu, o agente espera sozinho (1 s, 2 s, 4 s... até 30 s entre
+tentativas) e mostra o motivo no `STATUS=`. Passados 30 s sem Tailscale, ele
+manda READY mesmo assim, pro `systemctl` não ficar travado, e continua
+tentando. Ele nunca sai com erro por falta de Tailscale, então não entra em
+loop de reinício.
+
+**D28. Watchdog com WatchdogSec=60.**
+O agente manda `WATCHDOG=1` a cada 30 s enquanto a thread do servidor
+estiver viva. Se ela morrer, o agente reabre o socket. Se o processo travar,
+o systemd reinicia.
+
+**D29. Se o IP do Tailscale mudar, o agente escuta no novo.**
+A cada 30 s ele confere `tailscale ip -4`. Se mudou, fecha e reabre. Os jobs
+que estavam rodando continuam (o gerenciador de jobs não é recriado).
+
+**D30. Endurecimento do unit.**
+Ficaram as opções que funcionam num unit de usuário e não quebram comandos de
+desktop: `NoNewPrivileges`, `LockPersonality`, `RestrictRealtime`,
+`RestrictSUIDSGID`, `RestrictNamespaces`, `KeyringMode=private`,
+`SystemCallArchitectures=native`, um filtro de syscalls que tira só grupos
+que um comando de desktop não usa (`@clock @cpu-emulation @debug @module
+@obsolete @raw-io @reboot @swap`), `RestrictAddressFamilies` e `UMask=0077`.
+Ficaram de fora, de propósito:
+- `ProtectSystem`, `ProtectHome`, `PrivateTmp`, `PrivateDevices` e afins.
+  Precisam de namespace de montagem. Num unit de usuário isso nem sempre
+  funciona, `PrivateTmp` quebraria o X11 (`/tmp/.X11-unix`) e `ProtectHome`
+  quebraria comandos. Um usuário comum já não escreve nessas pastas.
+- `CapabilityBoundingSet`. O gerenciador do usuário não tem capabilities pra
+  tirar, e a opção pode impedir o serviço de subir.
+- `MemoryDenyWriteExecute`. Quebraria comandos que usam JIT (node, java).
+O `systemd-analyze --user security --offline` dá nota MEDIUM porque ele pontua
+como se fosse um serviço do sistema. Quase todos os itens vermelhos só
+importam pra quem roda como root. Um teste confere que os itens que
+escolhemos aparecem como ✓.
+
+**D31. `RestrictNamespaces=yes` e `soltar()`.**
+Navegadores e Flatpak usam namespaces. Como os comandos herdam as regras do
+agente, quem abre esses programas precisa usar `ponte.comando.soltar()`. Ele
+usa `systemd-run --user`, que cria uma unidade própria fora do agente (sem
+essas regras e sem morrer quando o agente reinicia). O `abrir_url` já faz isso.
+
+**D32. Auditoria com teto de disco.**
+JSON lines em `~/.local/state/ponte/auditoria.jsonl`, modo 600, pasta 700.
+Gira em 1 MiB e guarda 5 arquivos, então usa no máximo uns 6 MiB. Registra
+recusas (IP, assinatura, replay, permissão, whois), o início (`rodar`, com
+parâmetros) e o fim (`fim`, com código, estado e duração). Parâmetros com
+`segredo: True` aparecem como `***`. Texto longo é cortado em 200 caracteres.
+
+**D33. A migração não sobrescreve nada.**
+O v2 usa um arquivo novo, `ponte.json`. O `config.json` do v1 fica intacto,
+e ganha uma cópia de backup do lado. O `ponte.service` antigo é parado e
+desabilitado, mas o arquivo fica. Voltar pro v1 é
+`systemctl --user enable --now ponte.service`. O `install.sh` mostra o plano
+e pergunta antes. Sem terminal (e sem `--sim`), ele pula a migração.
+
+**D34. O instalador monta o pacote numa cópia temporária.**
+Assim ele não precisa escrever na pasta do repositório nem deixa `build/` lá.
+Se o setuptools do sistema servir, instala sem baixar nada
+(`--no-build-isolation`).
+
+**D35. O instalador usa `/usr/bin/python3`.**
+É o Python do apt, o único que enxerga o PyGObject do apt. Dá pra trocar com
+`PONTE_PYTHON`. Nesta máquina de nuvem o `/usr/bin/python3` é um 3.13 sem
+PyGObject, então os testes usam o `/usr/bin/python3.12`.
+
+**D36. Mira no Ubuntu 24.04.**
+Não consegui ver as duas máquinas, então mirei no Ubuntu desta: 24.04, com
+Python 3.12, GTK 4.14 e libadwaita 1.5. O código roda em Python 3.10 ou mais
+novo. O instalador confere a libadwaita 1.5 e mostra a linha do apt se faltar.
+
+**D37. `ponte exemplos --atualizar` pra quem migrou.**
+A migração não mexe na pasta de comandos. Os exemplos antigos continuam
+funcionando (o `ACEITA_ARGS` ainda vale). Pra trocar pelas versões novas,
+com `PARAMETROS`, existe esse comando. Ele pergunta antes e guarda os antigos
+como `.bak`.

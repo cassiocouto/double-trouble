@@ -53,9 +53,7 @@ class AgentHarness:
             **agent_opts,
         )
         self.port = self.srv.server_address[1]
-        self.thread = threading.Thread(
-            target=self.srv.serve_forever, kwargs={"poll_interval": 0.05}, daemon=True
-        )
+        self.thread = threading.Thread(target=self.srv.serve_forever, kwargs={"poll_interval": 0.05}, daemon=True)
         self.thread.start()
 
     def stop(self) -> None:
@@ -74,9 +72,7 @@ class AgentHarness:
         config_mod.update(change, self.config_path)
 
     # -- clientes ---------------------------------------------------------
-    def controller_config(
-        self, name: str | None = None, secret: bytes | None = None, agent: str | None = None
-    ):
+    def controller_config(self, name: str | None = None, secret: bytes | None = None, agent: str | None = None):
         cfg = Config(name=name or self.controller)
         target = agent or self.name
         cfg.machines[target] = MachineEntry(

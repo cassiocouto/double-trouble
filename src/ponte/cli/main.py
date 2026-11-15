@@ -37,6 +37,7 @@ from ..core.errors import (
     RemoteError,
 )
 from ..core.params import parse_cli_value
+from ..core.safety import write_private
 
 
 def say(msg: str = "") -> None:
@@ -88,8 +89,9 @@ def install_examples(force: bool = False) -> list[str]:
         target = folder / item.name
         if target.exists() and not force:
             continue
-        from ..core.safety import write_private
-
+        if target.exists():
+            backup = target.with_name(f"{item.name}.bak-{time.strftime('%Y%m%d-%H%M%S')}")
+            shutil.copy2(target, backup)
         write_private(target, item.read_text(encoding="utf-8"), mode=0o600)
         created.append(item.name[:-3])
     return created
@@ -138,8 +140,7 @@ def cmd_ping(a) -> None:
     sign = "+" if p.clock_skew >= 0 else ""
     jobs = f", {p.running} job(s) rodando" if p.running else ""
     say(
-        f"{p.machine} respondeu em {p.latency_ms:.0f} ms "
-        f"(relógio {sign}{p.clock_skew:.1f} s, agente {p.version}{jobs})"
+        f"{p.machine} respondeu em {p.latency_ms:.0f} ms (relógio {sign}{p.clock_skew:.1f} s, agente {p.version}{jobs})"
     )
     if abs(p.clock_skew) > 30:
         warn("os relógios estão bem diferentes. Acima de 60 s os pedidos são recusados")
@@ -236,9 +237,7 @@ def cmd_rodar(a) -> None:
         raise Exit(2, f"'{a.comando}' não tem PARAMETROS, passe argumentos soltos")
     if meta.get("confirmar") and not confirm(f"Rodar '{a.comando}' em {c.machine.name}?", a.sim):
         raise Exit(1, "cancelado, nada foi rodado")
-    stream_run(
-        c, a, lambda client, on_event: client.run(a.comando, params, args, on_event, not a.sem_esperar)
-    )
+    stream_run(c, a, lambda client, on_event: client.run(a.comando, params, args, on_event, not a.sem_esperar))
 
 
 def stream_run(c: Client, a, start) -> None:
@@ -357,9 +356,7 @@ def cmd_maquinas(a) -> None:
     for m in cfg.machines.values():
         say(f"  controla  {m.name:<24} {m.address}:{m.port}")
     for ctrl in cfg.agent.controllers.values():
-        allowed = (
-            "todos os comandos" if ctrl.commands is None else ", ".join(ctrl.commands) or "nenhum comando"
-        )
+        allowed = "todos os comandos" if ctrl.commands is None else ", ".join(ctrl.commands) or "nenhum comando"
         say(f"  aceita    {ctrl.name:<24} {allowed}")
 
 
@@ -368,9 +365,7 @@ def cmd_maquina_adicionar(a) -> None:
     secret = config_mod.parse_secret(read_secret(a.segredo, f"segredo pra {name}: "), name)
 
     def change(cfg: config_mod.Config) -> None:
-        cfg.machines[name] = config_mod.MachineEntry(
-            name=name, address=a.endereco or name, port=a.porta, secret=secret
-        )
+        cfg.machines[name] = config_mod.MachineEntry(name=name, address=a.endereco or name, port=a.porta, secret=secret)
 
     config_mod.update(change)
     say(f"pronto, esta máquina agora manda comandos pra {name}. Teste com: ponte ping {name}")
@@ -431,6 +426,34 @@ def cmd_config(a) -> None:
 
 
 # --------------------------------------------------------------------------
+
+
+def cmd_migrar(a) -> None:
+    from . import migrate
+
+    plan = migrate.make_plan()
+    say("Migração do ponte.py v1 pro v2\n")
+    for line in migrate.describe(plan):
+        say(f"  {line}")
+    say("")
+    if not confirm("Fazer a migração?", a.sim):
+        raise Exit(1, "nada foi mudado")
+    for line in migrate.apply(plan, force=a.forcar, stop_v1=not a.manter_v1):
+        say(f"  {line}")
+    say("\npronto. Agora instale e ligue o agente novo com scripts/install.sh")
+    say("(ou, se já instalou: systemctl --user enable --now ponte-agent)")
+
+
+def cmd_exemplos(a) -> None:
+    if a.atualizar and not confirm(
+        f"Trocar os exemplos em {paths.commands_dir()} pelas versões novas? (os atuais viram .bak)", a.sim
+    ):
+        raise Exit(1, "nada foi mudado")
+    created = install_examples(force=a.atualizar)
+    if created:
+        say(f"exemplos escritos em {paths.commands_dir()}: {', '.join(created)}")
+    else:
+        say("os exemplos já existem. Use --atualizar pra trocar pelas versões novas")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -514,13 +537,17 @@ def build_parser() -> argparse.ArgumentParser:
     s = sub.add_parser("config", help="mostra o config sem os segredos")
     s.set_defaults(func=cmd_config)
 
-    for extra in EXTRA_COMMANDS:
-        extra(sub)
+    s = sub.add_parser("migrar", help="traz o config do ponte.py v1 e desliga o serviço antigo")
+    s.add_argument("--sim", action="store_true", help="não pergunta antes")
+    s.add_argument("--forcar", action="store_true", help="recria o ponte.json se já existir (vira backup)")
+    s.add_argument("--manter-v1", action="store_true", help="não para nem desabilita o ponte.service antigo")
+    s.set_defaults(func=cmd_migrar)
+
+    s = sub.add_parser("exemplos", help="cria (ou atualiza) os comandos de exemplo nesta máquina")
+    s.add_argument("--atualizar", action="store_true", help="troca os existentes (os atuais viram .bak)")
+    s.add_argument("--sim", action="store_true")
+    s.set_defaults(func=cmd_exemplos)
     return p
-
-
-# Fases seguintes registram subcomandos aqui (migrar, parear).
-EXTRA_COMMANDS: list = []
 
 
 def main(argv: list[str] | None = None) -> None:

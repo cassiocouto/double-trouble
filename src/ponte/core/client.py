@@ -125,15 +125,11 @@ class Client:
                     raise ConnectionFailed(f"a conexão com {self.machine.name} caiu ({e})") from None
                 except ProtocolError as e:
                     if verifier.next_seq and "conexão fechada" in str(e):
-                        raise ConnectionFailed(
-                            f"a conexão com {self.machine.name} caiu no meio da resposta"
-                        ) from None
+                        raise ConnectionFailed(f"a conexão com {self.machine.name} caiu no meio da resposta") from None
                     raise
                 frame = verifier.check(frame)
                 if frame.get("tipo") == "erro":
-                    raise RemoteError(
-                        _text(frame.get("erro")) or "erro sem detalhe", _text(frame.get("codigo_erro"))
-                    )
+                    raise RemoteError(_text(frame.get("erro")) or "erro sem detalhe", _text(frame.get("codigo_erro")))
                 yield frame
         finally:
             self._sock = None

@@ -172,9 +172,7 @@ def test_listing_metadata(agent):
     assert c["categoria"] == "Sistema"
     assert c["confirmar"] is True
     assert c["timeout"] == 5
-    assert c["parametros"] == [
-        {"nome": "x", "tipo": "inteiro", "rotulo": "x", "obrigatorio": False, "padrao": 2}
-    ]
+    assert c["parametros"] == [{"nome": "x", "tipo": "inteiro", "rotulo": "x", "obrigatorio": False, "padrao": 2}]
 
 
 def test_concurrent_streams(agent):
@@ -245,9 +243,7 @@ def test_whois_sempre_without_binary(agent, monkeypatch, tmp_path):
 def test_whois_node_names_parsing():
     from ponte.core.tailscale import in_tailnet, node_names
 
-    data = {
-        "Node": {"ComputedName": "Cass-Dell", "Name": "cass-dell.tail.ts.net.", "Hostinfo": {"Hostname": "x"}}
-    }
+    data = {"Node": {"ComputedName": "Cass-Dell", "Name": "cass-dell.tail.ts.net.", "Hostinfo": {"Hostname": "x"}}}
     assert node_names(data) == {"cass-dell", "x"}
     assert node_names({}) == set()
     assert node_names({"Node": "lixo"}) == set()

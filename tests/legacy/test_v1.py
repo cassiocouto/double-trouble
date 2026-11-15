@@ -187,9 +187,7 @@ def test_unknown_action(v1):
 # so roda o que esta na pasta (invariantes 1, 2 e 7)
 
 
-@pytest.mark.parametrize(
-    "name", ["../x", "a/b", "/etc/passwd", "X", ".oculto", "a b", "", "a" * 65, "eco.py"]
-)
+@pytest.mark.parametrize("name", ["../x", "a/b", "/etc/passwd", "X", ".oculto", "a b", "", "a" * 65, "eco.py"])
 def test_bad_command_names(v1, name):
     v1.start()
     v1.make_cmd("eco", ECHO)

@@ -12,9 +12,7 @@ from ..conftest import alive, wait_until
 
 
 def spec(code: str, timeout: float = 10, **kw) -> RunSpec:
-    return RunSpec(
-        argv=[sys.executable, "-c", code], cwd="/", env={"PATH": "/usr/bin:/bin"}, timeout=timeout, **kw
-    )
+    return RunSpec(argv=[sys.executable, "-c", code], cwd="/", env={"PATH": "/usr/bin:/bin"}, timeout=timeout, **kw)
 
 
 def run(code: str, **kw):
@@ -143,9 +141,7 @@ def test_cancel_kills_group(tmp_path):
 
 
 def test_output_limit_and_keeps_draining():
-    code = (
-        "import sys\nfor _ in range(100):\n    sys.stdout.write('x' * 10000)\nprint('fim', file=sys.stderr)\n"
-    )
+    code = "import sys\nfor _ in range(100):\n    sys.stdout.write('x' * 10000)\nprint('fim', file=sys.stderr)\n"
     result, out = run(code, max_output=50_000)
     assert len(out["stdout"]) == 50_000
     assert out["stderr"] == "fim\n"

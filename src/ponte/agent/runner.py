@@ -116,9 +116,7 @@ class _Reader:
         self.sel = selectors.DefaultSelector()
         self.kept = {"stdout": 0, "stderr": 0}
         self.dropped = {"stdout": 0, "stderr": 0}
-        self.decoders = {
-            name: codecs.getincrementaldecoder("utf-8")(errors="replace") for name in ("stdout", "stderr")
-        }
+        self.decoders = {name: codecs.getincrementaldecoder("utf-8")(errors="replace") for name in ("stdout", "stderr")}
         self.files = {"stdout": proc.stdout, "stderr": proc.stderr}
         for name, f in self.files.items():
             assert f is not None

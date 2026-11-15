@@ -1,4 +1,4 @@
-"""ponte-agent: o processo que fica escutando pedidos e roda os comandos."""
+"""ponte-agent: o processo que o systemd do usuário mantém rodando."""
 
 from __future__ import annotations
 
@@ -6,43 +6,34 @@ import argparse
 import signal
 import sys
 
-from ..core import config as config_mod
-from ..core import tailscale
+from .. import __version__
+from ..core.config import ConfigSource
 from ..core.errors import PonteError
-from .server import AgentServer, log
-
-
-def resolve_listen(cfg: config_mod.Config) -> str | None:
-    if cfg.agent.listen != "tailscale":
-        return cfg.agent.listen
-    return tailscale.own_ip(4)
+from .audit import AuditLog
+from .server import log
+from .service import AgentService, check_not_root
 
 
 def main(argv: list[str] | None = None) -> None:
-    argparse.ArgumentParser(prog="ponte-agent", description="Agente do ponte (lado que executa).").parse_args(
-        argv
-    )
+    p = argparse.ArgumentParser(prog="ponte-agent", description="Agente do ponte (o lado que executa).")
+    p.add_argument("--versao", action="version", version=f"ponte-agent {__version__}")
+    p.parse_args(argv)
     try:
-        source = config_mod.ConfigSource(on_error=log)
-        cfg = source.get()
-        assert cfg is not None
-        host = resolve_listen(cfg)
-        if not host:
-            raise PonteError("não achei o IP do Tailscale (tailscale ip -4)")
-        srv = AgentServer(source, host, cfg.agent.port)
-    except (PonteError, OSError) as e:
+        check_not_root()
+        source = ConfigSource(on_error=log)
+    except PonteError as e:
         print(f"ponte-agent: {e}", file=sys.stderr)
         sys.exit(1)
-    log(f"ponte {cfg.name} escutando em {host}:{srv.server_address[1]}")
+    service = AgentService(source, audit=AuditLog())
 
     def stop(*_):
-        raise KeyboardInterrupt
+        service.stop()
+
+    def reload(*_):
+        source._stamp = None  # força reler o config na próxima vez
+        log("SIGHUP: relendo o config")
 
     signal.signal(signal.SIGTERM, stop)
-    try:
-        srv.serve_forever()
-    except KeyboardInterrupt:
-        log("desligando")
-    finally:
-        srv.server_close()
-        srv.jobs.shutdown()
+    signal.signal(signal.SIGINT, stop)
+    signal.signal(signal.SIGHUP, reload)
+    service.run()

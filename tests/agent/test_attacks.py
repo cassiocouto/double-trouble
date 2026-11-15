@@ -110,9 +110,7 @@ def test_inv1_symlink_to_outside_refused(agent, tmp_path):
 def test_inv1_swapped_file_runs_what_was_checked(agent):
     """O arquivo é executado pelo fd conferido, não pelo caminho."""
     h = agent()
-    h.make_cmd(
-        "muda", 'import os\nprint(os.environ["PONTE_COMANDO"], __file__.startswith("/proc/self/fd/"))\n'
-    )
+    h.make_cmd("muda", 'import os\nprint(os.environ["PONTE_COMANDO"], __file__.startswith("/proc/self/fd/"))\n')
     out = h.client().run("muda")
     assert out.text_stdout == "muda True\n"
 
@@ -203,9 +201,7 @@ def test_inv3_replay(agent):
     assert f["codigo_erro"] == "repetido"
 
 
-@pytest.mark.parametrize(
-    "ts", [lambda: int(time.time()) - 3600, lambda: int(time.time()) + 3600, lambda: True]
-)
+@pytest.mark.parametrize("ts", [lambda: int(time.time()) - 3600, lambda: int(time.time()) + 3600, lambda: True])
 def test_inv3_bad_timestamps(agent, ts):
     h = agent()
     req = h.build("ping")
