@@ -140,6 +140,17 @@ def test_inv2_listing_never_executes(agent, tmp_path):
     assert "avisos" in listing["armadilha2"]
 
 
+def test_inv2_syntax_error_command_is_blocked_not_run(agent, tmp_path):
+    h = agent()
+    marker = tmp_path / "rodou"
+    h.make_cmd("quebrado", f"open({str(marker)!r}, 'w')\ndef (:\n")
+    with pytest.raises(RemoteError, match="erro de sintaxe"):
+        h.client().run("quebrado")
+    listing = {c["nome"]: c for c in h.client().list_commands()}
+    assert "erro de sintaxe" in listing["quebrado"]["bloqueado"]
+    assert not marker.exists()
+
+
 # ==========================================================================
 # Invariante 3: tudo autenticado, erro pra estranho sem assinatura
 

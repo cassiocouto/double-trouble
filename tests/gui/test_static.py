@@ -68,3 +68,24 @@ def test_rows_never_render_agent_text_as_markup():
     for name in ("pages.py", "dialogs.py"):
         text = (GUI / name).read_text()
         assert "Adw.ActionRow(" not in text, f"{name}: use o helper row(), que desliga o markup"
+
+
+def test_gui_without_gtk_explains_what_to_install():
+    import os
+    import subprocess
+    import sys
+
+    probe = "import gi; gi.require_version('Gtk','4.0'); gi.require_version('Adw','1')"
+    if subprocess.run([sys.executable, "-c", probe], capture_output=True).returncode == 0:
+        import pytest
+
+        pytest.skip("aqui tem GTK 4, então a mensagem não aparece")
+    env = {**os.environ, "PYTHONPATH": str(GUI.parents[1])}
+    r = subprocess.run(
+        [sys.executable, "-c", "import sys; from ponte.gui.app import main; sys.exit(main(['x']))"],
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+    assert r.returncode == 1
+    assert "sudo apt install python3-gi gir1.2-gtk-4.0 gir1.2-adw-1" in r.stderr
