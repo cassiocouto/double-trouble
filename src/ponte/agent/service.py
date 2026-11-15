@@ -128,10 +128,10 @@ class AgentService:
                 continue
             try:
                 srv = AgentServer(self.source, host, cfg.agent.port, self.jobs, self.audit, base_dir=self.base_dir)
-            except OSError as e:
-                self._set_status(
-                    f"não consegui escutar em {host}:{cfg.agent.port} ({e.strerror or e}), tentando de novo"
-                )
+            except (OSError, PonteError) as e:
+                # PonteError: o config quebrou entre a checagem acima e agora. Espera em vez de cair.
+                why = getattr(e, "strerror", None) or e
+                self._set_status(f"não consegui escutar em {host}:{cfg.agent.port} ({why}), tentando de novo")
                 if self._wait(backoff):
                     break
                 backoff = min(backoff * 2, self.max_backoff)
