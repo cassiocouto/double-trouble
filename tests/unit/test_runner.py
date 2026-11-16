@@ -6,7 +6,7 @@ import sys
 import threading
 import time
 
-from ponte.agent.runner import RunSpec, group_members, run_process
+from relay.agent.runner import RunSpec, group_members, run_process
 
 from ..conftest import alive, wait_until
 

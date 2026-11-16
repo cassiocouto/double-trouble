@@ -31,18 +31,18 @@ import os, sys, threading, time
 sys.path.insert(0, sys.argv[1]); sys.path.insert(0, sys.argv[2])
 from pathlib import Path
 from helpers import AgentHarness
-from ponte.core import config as config_mod
+from relay.core import config as config_mod
 root = Path(sys.argv[3])
 h = AgentHarness(root / "agente")
 h.make_cmd("oi", '"""Diz oi."""\nCATEGORIA = "Teste"\nprint("oi da outra")\n')
 cfg, _ = h.controller_config()
 cfg.name = "controle"
-os.makedirs(os.environ["PONTE_DIR"], mode=0o700, exist_ok=True)
-config_mod.save(cfg, Path(os.environ["PONTE_DIR"]) / "ponte.json")
+os.makedirs(os.environ["RELAY_DIR"], mode=0o700, exist_ok=True)
+config_mod.save(cfg, Path(os.environ["RELAY_DIR"]) / "relay.json")
 
 from gi.repository import GLib
-from ponte.gui import app as app_mod
-from ponte.gui import window as window_mod
+from relay.gui import app as app_mod
+from relay.gui import window as window_mod
 
 result = {"ok": False}
 def drive(win):
@@ -76,7 +76,7 @@ def init(self, app):
     drive(self)
 window_mod.MainWindow.__init__ = init
 GLib.timeout_add_seconds(30, lambda: sys.exit(3))
-app_mod.main(["ponte-gui"])
+app_mod.main(["relay-gui"])
 h.stop()
 sys.exit(0 if result["ok"] else 2)
 '''
@@ -85,9 +85,9 @@ sys.exit(0 if result["ok"] else 2)
 def test_app_opens_runs_and_quits(tmp_path):
     env = {
         **os.environ,
-        "PONTE_DIR": str(tmp_path / "ctl"),
-        "PONTE_DATA_DIR": str(tmp_path / "dados"),
-        "PONTE_STATE_DIR": str(tmp_path / "estado"),
+        "RELAY_DIR": str(tmp_path / "ctl"),
+        "RELAY_DATA_DIR": str(tmp_path / "dados"),
+        "RELAY_STATE_DIR": str(tmp_path / "estado"),
         "PYTHONPATH": str(SRC),
         "GSK_RENDERER": "cairo",
     }

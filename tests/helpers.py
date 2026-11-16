@@ -10,12 +10,12 @@ import struct
 import threading
 from pathlib import Path
 
-from ponte.agent.jobs import JobManager
-from ponte.agent.server import AgentServer
-from ponte.core import config as config_mod
-from ponte.core import protocol
-from ponte.core.client import Client
-from ponte.core.config import Config, ConfigSource, ControllerEntry, MachineEntry
+from relay.agent.jobs import JobManager
+from relay.agent.server import AgentServer
+from relay.core import config as config_mod
+from relay.core import protocol
+from relay.core.client import Client
+from relay.core.config import Config, ConfigSource, ControllerEntry, MachineEntry
 
 
 class AgentHarness:
@@ -25,11 +25,11 @@ class AgentHarness:
         self.root = root
         self.name = name
         self.controller = controller
-        self.base = root / "ponte"
+        self.base = root / "relay"
         self.base.mkdir(parents=True, mode=0o700)
         os.chmod(self.base, 0o700)
         (self.base / "comandos").mkdir(mode=0o700)
-        self.config_path = self.base / "ponte.json"
+        self.config_path = self.base / "relay.json"
         self.secret = secrets.token_bytes(32)
         cfg = Config(name=name)
         cfg.agent.listen = "127.0.0.1"

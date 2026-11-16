@@ -9,9 +9,9 @@ import threading
 
 import pytest
 
-from ponte.core import config as config_mod
-from ponte.core import protocol
-from ponte.core.errors import ConfigError, ProtocolError
+from relay.core import config as config_mod
+from relay.core import protocol
+from relay.core.errors import ConfigError, ProtocolError
 
 
 def test_directional_keys_differ():
@@ -117,7 +117,7 @@ def test_config_roundtrip(tmp_path):
     assert cfg.name == "cass-dell-brasil"
     cfg.agent.controllers["g15"] = config_mod.ControllerEntry("g15", os.urandom(32), ["status"], "cass-g15")
     cfg.machines["g15"] = config_mod.MachineEntry("g15", "g15.tail.ts.net", 47800, os.urandom(32))
-    path = tmp_path / "ponte.json"
+    path = tmp_path / "relay.json"
     config_mod.save(cfg, path)
     assert oct(os.stat(path).st_mode & 0o777) == "0o600"
     loaded = config_mod.load(path)
@@ -153,7 +153,7 @@ def test_config_validation(mutate, msg):
 
 
 def test_config_requires_mode_600(tmp_path):
-    path = tmp_path / "ponte.json"
+    path = tmp_path / "relay.json"
     config_mod.save(config_mod.default_config("a"), path)
     os.chmod(path, 0o644)
     with pytest.raises(ConfigError, match="chmod 600"):
@@ -161,7 +161,7 @@ def test_config_requires_mode_600(tmp_path):
 
 
 def test_config_rejects_duplicate_keys(tmp_path):
-    path = tmp_path / "ponte.json"
+    path = tmp_path / "relay.json"
     path.write_text('{"versao": 2, "nome": "a", "nome": "b"}')
     os.chmod(path, 0o600)
     with pytest.raises(ConfigError, match="repetida"):
@@ -181,7 +181,7 @@ def test_find_machine_partial():
 
 
 def test_update_is_locked_and_validated(tmp_path):
-    path = tmp_path / "ponte.json"
+    path = tmp_path / "relay.json"
     config_mod.save(config_mod.default_config("a"), path)
 
     def add(i):
@@ -206,7 +206,7 @@ def test_update_is_locked_and_validated(tmp_path):
 
 
 def test_config_source_reloads_and_fails_closed(tmp_path):
-    path = tmp_path / "ponte.json"
+    path = tmp_path / "relay.json"
     config_mod.save(config_mod.default_config("a"), path)
     errors = []
     src = config_mod.ConfigSource(path, on_error=errors.append)
@@ -226,7 +226,7 @@ def test_config_source_reloads_and_fails_closed(tmp_path):
 def test_config_dir_must_not_be_writable_by_others(tmp_path):
     folder = tmp_path / "cfg"
     folder.mkdir(mode=0o700)
-    path = folder / "ponte.json"
+    path = folder / "relay.json"
     config_mod.save(config_mod.default_config("a"), path)
     os.chmod(folder, 0o777)
     try:
@@ -238,7 +238,7 @@ def test_config_dir_must_not_be_writable_by_others(tmp_path):
 
 
 def test_duplicate_key_error_does_not_echo_the_key():
-    from ponte.core.legacy import loads_strict
+    from relay.core.legacy import loads_strict
 
     with pytest.raises(ValueError) as e:
         loads_strict('{"segredo-gigante": 1, "segredo-gigante": 2}')

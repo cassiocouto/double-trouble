@@ -14,12 +14,12 @@ import time
 
 import pytest
 
-from ponte.core.config import MachineEntry
-from ponte.gui import text
-from ponte.gui.form import NONE_CHOICE, FormModel, remember_values
-from ponte.gui.history import HistoryStore
-from ponte.gui.services import ControllerService, friendly_error
-from ponte.gui.viewmodels import CommandsVM, HistoryVM, MachinesVM, RunVM, SettingsVM
+from relay.core.config import MachineEntry
+from relay.gui import text
+from relay.gui.form import NONE_CHOICE, FormModel, remember_values
+from relay.gui.history import HistoryStore
+from relay.gui.services import ControllerService, friendly_error
+from relay.gui.viewmodels import CommandsVM, HistoryVM, MachinesVM, RunVM, SettingsVM
 
 
 class FakeLoop:
@@ -61,9 +61,9 @@ def ctx(agent, tmp_path):
 SLOW = """
 \"\"\"Conta devagar.\"\"\"
 import sys, time
-from ponte.comando import parametros
+from relay.command import params
 PARAMETROS = [{"nome": "vezes", "tipo": "inteiro", "min": 1, "max": 100, "padrao": 3}]
-for i in range(parametros()["vezes"]):
+for i in range(params()["vezes"]):
     print(f"tique {i}", flush=True)
     time.sleep(0.1)
 print("fim", file=sys.stderr)
@@ -94,7 +94,7 @@ def test_machines_online_and_offline(ctx):
 
 
 def test_machines_missing_config(ctx):
-    from ponte.core.errors import ConfigError
+    from relay.core.errors import ConfigError
 
     _, loop, _, _ = ctx
 
@@ -108,7 +108,7 @@ def test_machines_missing_config(ctx):
 
 
 def test_skew_warning():
-    from ponte.gui.viewmodels import MachineState
+    from relay.gui.viewmodels import MachineState
 
     m = MachineState("x", "x", 1, status="online", latency_ms=3, skew=45.0)
     assert "relógios" in m.warning
@@ -410,9 +410,9 @@ def test_history_rerun_prefills(ctx, tmp_path):
 
 
 def test_settings(tmp_path):
-    from ponte.core import config as config_mod
+    from relay.core import config as config_mod
 
-    path = tmp_path / "ponte.json"
+    path = tmp_path / "relay.json"
     cfg = config_mod.default_config("brasil")
     cfg.agent.controllers["g15"] = config_mod.ControllerEntry("g15", os.urandom(32))
     config_mod.save(cfg, path)
@@ -450,7 +450,7 @@ def test_text_helpers():
 
 
 def test_friendly_errors():
-    from ponte.core.errors import AuthError, ConnectionFailed, RemoteError
+    from relay.core.errors import AuthError, ConnectionFailed, RemoteError
 
     assert friendly_error(ConnectionFailed("caiu"), "g15") == "Não deu pra falar com g15. caiu"
     assert "Confira o pareamento" in friendly_error(AuthError("x"), "g15")
@@ -463,7 +463,7 @@ def test_gui_logic_never_imports_gi():
     import sys
 
     code = (
-        "import sys; import ponte.gui.viewmodels, ponte.gui.services, ponte.gui.form, ponte.gui.history; "
+        "import sys; import relay.gui.viewmodels, relay.gui.services, relay.gui.form, relay.gui.history; "
         "sys.exit(1 if 'gi' in sys.modules else 0)"
     )
     env = {**os.environ, "PYTHONPATH": os.path.join(os.path.dirname(__file__), "..", "..", "src")}
@@ -475,8 +475,8 @@ def test_gui_logic_never_imports_gi():
 
 
 def test_pairing_view_models(tmp_path):
-    from ponte.core import config as config_mod
-    from ponte.gui.viewmodels import PairAgentVM, PairControllerVM
+    from relay.core import config as config_mod
+    from relay.gui.viewmodels import PairAgentVM, PairControllerVM
 
     loop = FakeLoop()
     agent_path = tmp_path / "agente.json"
@@ -513,8 +513,8 @@ def test_pairing_view_models(tmp_path):
 
 
 def test_pairing_agent_vm_without_tailscale(tmp_path):
-    from ponte.core import config as config_mod
-    from ponte.gui.viewmodels import PairAgentVM
+    from relay.core import config as config_mod
+    from relay.gui.viewmodels import PairAgentVM
 
     path = tmp_path / "a.json"
     config_mod.save(config_mod.default_config("a"), path)

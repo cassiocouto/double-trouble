@@ -9,13 +9,13 @@ from pathlib import Path
 
 import pytest
 
-from ponte.cli import migrate
-from ponte.core import config as config_mod
-from ponte.core import paths
-from ponte.core.errors import ConfigError
+from relay.cli import migrate
+from relay.core import config as config_mod
+from relay.core import paths
+from relay.core.errors import ConfigError
 
 V1_UNIT = """[Unit]
-Description=Ponte entre os desktops da Cass
+Description=Relay entre os desktops da Cass
 
 [Service]
 ExecStart=/usr/bin/python3 /home/cass/bin/ponte.py servir
@@ -24,7 +24,16 @@ Restart=always
 
 
 @pytest.fixture
-def v1_setup(base, make_cmd, tmp_path, monkeypatch):
+def v1_dir():
+    """Pasta do ponte.py v1 (RELAY_LEGACY_DIR aponta pra dentro do tmp_path)."""
+    d = paths.legacy_dir()
+    (d / "comandos").mkdir(parents=True, mode=0o700)
+    os.chmod(d, 0o700)
+    return d
+
+
+@pytest.fixture
+def v1_setup(v1_dir, tmp_path, monkeypatch):
     secret = os.urandom(32).hex()
     v1 = {
         "nome": "cass-dell-brasil",
@@ -34,11 +43,13 @@ def v1_setup(base, make_cmd, tmp_path, monkeypatch):
         "permitidos": ["100.64.0.0/10", "fd7a:115c:a1e0::/48", "127.0.0.0/8", "::1/128"],
         "maquinas": {"cass-dell-g15-5511": {"endereco": "cass-dell-g15-5511", "porta": 47800}},
     }
-    path = base / "config.json"
+    path = v1_dir / "config.json"
     fd = os.open(path, os.O_WRONLY | os.O_CREAT, 0o600)
     with os.fdopen(fd, "w") as f:
         json.dump(v1, f, indent=2)
-    make_cmd("status", '"""v1."""\nprint(1)\n')
+    cmd = v1_dir / "comandos" / "status.py"
+    cmd.write_text('"""v1."""\nprint(1)\n')
+    os.chmod(cmd, 0o600)
     unit_dir = Path(os.environ["HOME"]) / ".config" / "systemd" / "user"
     unit_dir.mkdir(parents=True)
     (unit_dir / "ponte.service").write_text(V1_UNIT)
@@ -46,7 +57,7 @@ def v1_setup(base, make_cmd, tmp_path, monkeypatch):
     fake = tmp_path / "systemctl"
     fake.write_text(f'#!/bin/sh\necho "$@" >> {log}\n')
     os.chmod(fake, 0o700)
-    monkeypatch.setenv("PONTE_SYSTEMCTL", str(fake))
+    monkeypatch.setenv("RELAY_SYSTEMCTL", str(fake))
     return path, secret, log
 
 
@@ -68,14 +79,18 @@ def test_plan_maps_v1(v1_setup):
     assert any("parear de novo" in n for n in plan.notes)
 
 
-def test_apply_keeps_v1_intact(v1_setup, base):
+def test_apply_keeps_v1_intact(v1_setup, v1_dir):
     path, _, log = v1_setup
     before = digest(path)
-    commands_before = {p.name: digest(p) for p in (base / "comandos").iterdir()}
+    commands_before = {p.name: digest(p) for p in (v1_dir / "comandos").iterdir()}
     done = migrate.apply(migrate.make_plan())
     assert digest(path) == before, "config.json do v1 não pode mudar"
-    assert {p.name: digest(p) for p in (base / "comandos").iterdir()} == commands_before
-    backups = list(base.glob("config.json.v1-backup-*"))
+    assert {p.name: digest(p) for p in (v1_dir / "comandos").iterdir()} == commands_before
+    # os comandos foram copiados (não movidos) pra pasta nova, com modo 600
+    copied = paths.commands_dir() / "status.py"
+    assert digest(copied) == commands_before["status.py"]
+    assert oct(os.stat(copied).st_mode & 0o777) == "0o600"
+    backups = list(v1_dir.glob("config.json.v1-backup-*"))
     assert len(backups) == 1 and digest(backups[0]) == before
     assert oct(os.stat(backups[0]).st_mode & 0o777) == "0o600"
     loaded = config_mod.load(paths.config_file())
@@ -111,8 +126,18 @@ def test_v1_config_must_be_private(v1_setup):
         migrate.make_plan()
 
 
+def test_copy_never_overwrites_new_commands(v1_setup):
+    target = paths.commands_dir()
+    target.mkdir(parents=True, mode=0o700)
+    mine = target / "status.py"
+    mine.write_text("print('versão nova')\n")
+    os.chmod(mine, 0o600)
+    assert migrate.copy_commands() == []
+    assert mine.read_text() == "print('versão nova')\n"
+
+
 def test_cli_migrar_asks_without_tty(v1_setup, capsys):
-    from ponte.cli.main import main
+    from relay.cli.main import main
 
     with pytest.raises(SystemExit) as e:
         main(["migrar"])
@@ -123,8 +148,8 @@ def test_cli_migrar_asks_without_tty(v1_setup, capsys):
 
 
 def test_cli_refuses_secret_on_argv(base, capsys):
-    from ponte.cli.main import main
-    from ponte.core import config as config_mod
+    from relay.cli.main import main
+    from relay.core import config as config_mod
 
     config_mod.save(config_mod.default_config("a"))
     for argv in (

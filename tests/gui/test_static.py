@@ -6,7 +6,7 @@ import ast
 import re
 from pathlib import Path
 
-GUI = Path(__file__).resolve().parents[2] / "src" / "ponte" / "gui"
+GUI = Path(__file__).resolve().parents[2] / "src" / "relay" / "gui"
 WIDGET_FILES = ("app.py", "window.py", "pages.py", "dialogs.py", "widgets.py")
 
 # Tudo que existe na libadwaita 1.5 (Ubuntu 24.04) e que a interface pode usar.
@@ -82,7 +82,7 @@ def test_gui_without_gtk_explains_what_to_install():
         pytest.skip("aqui tem GTK 4, então a mensagem não aparece")
     env = {**os.environ, "PYTHONPATH": str(GUI.parents[1])}
     r = subprocess.run(
-        [sys.executable, "-c", "import sys; from ponte.gui.app import main; sys.exit(main(['x']))"],
+        [sys.executable, "-c", "import sys; from relay.gui.app import main; sys.exit(main(['x']))"],
         env=env,
         capture_output=True,
         text=True,

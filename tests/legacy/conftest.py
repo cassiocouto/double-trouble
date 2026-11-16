@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 
-LEGACY = Path(__file__).resolve().parents[2] / "legacy" / "ponte.py"
+LEGACY = Path(__file__).resolve().parents[2] / "legacy" / "v1_original.py"
 
 
 def load_v1():

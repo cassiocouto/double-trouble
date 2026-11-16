@@ -8,9 +8,9 @@ import time
 
 import pytest
 
-from ponte.core import protocol
-from ponte.core.config import ControllerEntry
-from ponte.core.errors import AuthError, RemoteError
+from relay.core import protocol
+from relay.core.config import ControllerEntry
+from relay.core.errors import AuthError, RemoteError
 
 TICKER = """
 import sys, time
@@ -50,7 +50,7 @@ def test_seq_numbers_and_types(agent):
 
 
 def test_heartbeat_when_silent(agent, monkeypatch):
-    from ponte.agent import server
+    from relay.agent import server
 
     monkeypatch.setattr(server, "HEARTBEAT", 0.3)
     h = agent()
@@ -221,7 +221,7 @@ def fake_tailscale(tmp_path, node_fqdn: str | None, hostname: str = "x"):
     ],
 )
 def test_whois_required(agent, tmp_path, monkeypatch, node, ok):
-    monkeypatch.setenv("PONTE_TAILSCALE", str(fake_tailscale(tmp_path, node)))
+    monkeypatch.setenv("RELAY_TAILSCALE", str(fake_tailscale(tmp_path, node)))
     h = agent(verify_tailscale="sempre")
     if ok:
         assert h.client().ping()
@@ -233,27 +233,27 @@ def test_whois_required(agent, tmp_path, monkeypatch, node, ok):
 
 def test_whois_ignores_self_reported_hostname(agent, tmp_path, monkeypatch):
     """Um aparelho que se chama 'controle' por conta própria não passa: vale o nome do controle do Tailscale."""
-    monkeypatch.setenv("PONTE_TAILSCALE", str(fake_tailscale(tmp_path, f"intruso.{TAILNET}", hostname="controle")))
+    monkeypatch.setenv("RELAY_TAILSCALE", str(fake_tailscale(tmp_path, f"intruso.{TAILNET}", hostname="controle")))
     h = agent(verify_tailscale="sempre")
     with pytest.raises(RemoteError, match="intruso"):
         h.client().ping()
 
 
 def test_whois_auto_skips_loopback(agent, tmp_path, monkeypatch):
-    monkeypatch.setenv("PONTE_TAILSCALE", str(fake_tailscale(tmp_path, f"intruso.{TAILNET}")))
+    monkeypatch.setenv("RELAY_TAILSCALE", str(fake_tailscale(tmp_path, f"intruso.{TAILNET}")))
     h = agent(verify_tailscale="auto")
     assert h.client().ping()  # 127.0.0.1 não é IP do tailnet, então "auto" não confere
 
 
 def test_whois_sempre_without_binary(agent, monkeypatch, tmp_path):
-    monkeypatch.setenv("PONTE_TAILSCALE", str(tmp_path / "nao-existe"))
+    monkeypatch.setenv("RELAY_TAILSCALE", str(tmp_path / "nao-existe"))
     h = agent(verify_tailscale="sempre")
     with pytest.raises(RemoteError, match="não foi achado"):
         h.client().ping()
 
 
 def test_whois_parsing():
-    from ponte.core.tailscale import in_tailnet, node_fqdn
+    from relay.core.tailscale import in_tailnet, node_fqdn
 
     data = {"Node": {"ComputedName": "x", "Name": "Cass-Dell.tail.ts.net.", "Hostinfo": {"Hostname": "y"}}}
     assert node_fqdn(data) == "cass-dell.tail.ts.net"
@@ -264,7 +264,7 @@ def test_whois_parsing():
 
 
 def test_whois_cache(tmp_path, monkeypatch):
-    from ponte.core.tailscale import WhoisChecker
+    from relay.core.tailscale import WhoisChecker
 
     counter = tmp_path / "count"
     script = tmp_path / "tailscale"
@@ -274,7 +274,7 @@ def test_whois_cache(tmp_path, monkeypatch):
         f'if [ "$1" = status ]; then echo \'{{"Self": {{"DNSName": "b.{TAILNET}."}}}}\'; fi\n'
     )
     os.chmod(script, 0o700)
-    monkeypatch.setenv("PONTE_TAILSCALE", str(script))
+    monkeypatch.setenv("RELAY_TAILSCALE", str(script))
     w = WhoisChecker(ttl=60)
     for _ in range(5):
         w.check("sempre", "100.64.0.5", "a")

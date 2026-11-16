@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from ponte.core.errors import ParamError
-from ponte.core.params import parse_cli_value, parse_schema, validate_values
+from relay.core.errors import ParamError
+from relay.core.params import parse_cli_value, parse_schema, validate_values
 
 
 def test_full_schema_roundtrip():
@@ -118,7 +118,7 @@ def test_bad_cli_values(kind, text):
 def test_regex_check_runs_out_of_process_with_timeout():
     import time
 
-    from ponte.core.params import regex_fullmatch
+    from relay.core.params import regex_fullmatch
 
     assert regex_fullmatch("[a-z]+", "abc") and not regex_fullmatch("[a-z]+", "ABC")
     t0 = time.monotonic()

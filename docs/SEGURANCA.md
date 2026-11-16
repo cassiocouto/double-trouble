@@ -1,6 +1,6 @@
-# Segurança do ponte
+# Segurança do relay
 
-Este documento diz do que o ponte se protege, como, e o que fica de fora.
+Este documento diz do que o relay se protege, como, e o que fica de fora.
 Cada regra tem testes que tentam quebrar ela (em `tests/agent/test_attacks.py`
 e nos outros arquivos citados).
 
@@ -20,13 +20,13 @@ comandos, e não deixar ninguém derrubar o agente fácil.
 
 | Atacante | Tem o quê | O pior que deve conseguir |
 |---|---|---|
-| **Outro dispositivo do tailnet** | Rede até a porta do agente | Ver que o ponte existe ali, e ocupar até 4 conexões por IP (32 no total) |
+| **Outro dispositivo do tailnet** | Rede até a porta do agente | Ver que o relay existe ali, e ocupar até 4 conexões por IP (32 no total) |
 | **Outro usuário local** da mesma máquina | Uma conta comum, sem root | Ver que o agente existe. Ver o `argv` dos comandos antigos (com `ACEITA_ARGS`). Atrapalhar um pareamento em andamento (gastando as 3 tentativas) |
-| **Quem pegou o controlador** (o notebook, o config) | O `ponte.json` do controlador, com o segredo da direção | Rodar os comandos que você já aprovou pra esse controlador, com os parâmetros que eles aceitam. Ver os jobs que esse controlador rodou |
+| **Quem pegou o controlador** (o notebook, o config) | O `relay.json` do controlador, com o segredo da direção | Rodar os comandos que você já aprovou pra esse controlador, com os parâmetros que eles aceitam. Ver os jobs que esse controlador rodou |
 | Alguém com **root** em qualquer das duas máquinas | Tudo | Tudo. Fora do escopo |
 
 O Tailscale é a primeira camada: só máquinas do seu tailnet chegam na porta,
-e o tráfego vai cifrado pelo WireGuard. O ponte **não confia** só nisso. Ele
+e o tráfego vai cifrado pelo WireGuard. O relay **não confia** só nisso. Ele
 assume que um dispositivo do tailnet pode ser hostil.
 
 ## As 11 regras e como cada uma é garantida
@@ -77,8 +77,8 @@ de usuário (`systemctl --user`). Testes: `test_inv6_refuses_root`,
 
 **7. Dono e permissões.**
 Pasta de config, pasta de comandos e arquivo de comando: do seu usuário e sem
-escrita pra grupo/outros. Arquivo com segredo (`ponte.json`, `config.json`
-do v1): modo 600 e não pode ser link. Se o `ponte.json` ficar inseguro ou
+escrita pra grupo/outros. Arquivo com segredo (`relay.json`, `config.json`
+do v1): modo 600 e não pode ser link. Se o `relay.json` ficar inseguro ou
 quebrado com o agente rodando, ele **recusa tudo** até alguém consertar
 (falha fechada). Auditoria e histórico são 600 em pastas 700.
 Testes: `test_inv7_*`, `test_config_requires_mode_600`.
@@ -123,7 +123,7 @@ Testes: `test_inv11_*`, `test_review_*`.
 
 ## Pareamento
 
-**Fluxo.** Na máquina que vai executar (o agente), `ponte parear` (ou
+**Fluxo.** Na máquina que vai executar (o agente), `relay parear` (ou
 "Deixar outra controlar" na interface) abre uma janela de **2 minutos** na
 porta 47801 e mostra um código de **8 números**. Na máquina que vai mandar,
 você digita esse código. As duas saem com um segredo novo de 32 bytes, igual
@@ -166,8 +166,8 @@ nome. Re-parear mantém as permissões de comandos que já existiam.
   elementos inválidos (0, 1, p−1, fora do subgrupo), nomes trocados e
   mensagem final adulterada.
 
-**Caminho manual.** Continua existindo: `ponte agente autorizar <nome>` na
-máquina que executa mostra um segredo, e `ponte maquina adicionar <nome>
+**Caminho manual.** Continua existindo: `relay agente autorizar <nome>` na
+máquina que executa mostra um segredo, e `relay maquina adicionar <nome>
 --segredo -` na que manda lê esse segredo. O segredo aparece na tela e passa
 pela sua área de transferência, então prefira o pareamento.
 
@@ -179,11 +179,11 @@ usar o código antes de você.
 
 ## Quem pegou o controlador
 
-Com o `ponte.json` do controlador, a pessoa tem o segredo da direção
+Com o `relay.json` do controlador, a pessoa tem o segredo da direção
 controlador → agente. Ela consegue:
 
 - rodar os comandos que esse controlador pode rodar (por padrão todos; dá pra
-  limitar em Configurações → Esta máquina → permissões, ou no `ponte.json`
+  limitar em Configurações → Esta máquina → permissões, ou no `relay.json`
   com `"comandos": ["status"]`);
 - com os parâmetros que eles aceitam, validados pelo agente;
 - ver o histórico e a saída dos jobs **desse** controlador (não dos outros).
@@ -193,7 +193,7 @@ comandos, ler o config do agente, parear outra máquina sem o código, nem
 controlar a outra direção (que tem outro segredo).
 
 O que fazer: na máquina que executa, revogue o controlador
-(`ponte agente revogar <nome>` ou o botão de lixeira na interface). Vale na
+(`relay agente revogar <nome>` ou o botão de lixeira na interface). Vale na
 hora, sem reiniciar nada.
 
 Atenção com config migrado do v1: o v1 usava **um** segredo pras duas
@@ -227,7 +227,7 @@ que ficou de fora está no `DECISIONS.md` (D30, D31).
 
 Isso é defesa em profundidade, não uma caixa fechada. Um comando aprovado
 pode fazer tudo que o seu usuário faz (é pra isso que ele existe). Por
-exemplo, `soltar()` usa o `systemd-run --user` pra abrir um programa fora das
+exemplo, `detach()` usa o `systemd-run --user` pra abrir um programa fora das
 regras do agente.
 
 ## O que fica de fora
@@ -241,7 +241,7 @@ regras do agente.
   demais"). Use regex simples.
 - **Processo que sai do grupo de propósito.** O timeout mata o grupo de
   processos do comando. Um programa que chama `setsid` ou vira daemon sai do
-  grupo e não é morto no timeout (é assim que o `soltar()` funciona). Como só
+  grupo e não é morto no timeout (é assim que o `detach()` funciona). Como só
   roda código que você aprovou, isso é escolha do comando. Um cgroup por job
   (`systemd-run --scope`) fecharia esse caso; ficou como melhoria futura.
 - **`CONFIRMAR` não é uma barreira.** O agente exige `"confirmado": true`

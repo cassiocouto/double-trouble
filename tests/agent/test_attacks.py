@@ -15,9 +15,9 @@ import time
 
 import pytest
 
-from ponte.core import config as config_mod
-from ponte.core import protocol
-from ponte.core.errors import AuthError, RemoteError
+from relay.core import config as config_mod
+from relay.core import protocol
+from relay.core.errors import AuthError, RemoteError
 
 from ..conftest import alive, wait_until
 
@@ -111,7 +111,7 @@ def test_inv1_symlink_to_outside_refused(agent, tmp_path):
 def test_inv1_swapped_file_runs_what_was_checked(agent):
     """O arquivo é executado pelo fd conferido, não pelo caminho."""
     h = agent()
-    h.make_cmd("muda", 'import os\nprint(os.environ["PONTE_COMANDO"], __file__.startswith("/proc/self/fd/"))\n')
+    h.make_cmd("muda", 'import os\nprint(os.environ["RELAY_COMMAND"], __file__.startswith("/proc/self/fd/"))\n')
     out = h.client().run("muda")
     assert out.text_stdout == "muda True\n"
 
@@ -291,8 +291,8 @@ class FakeAgent:
 
 
 def fake_client(port, secret, controller="controle", agent_name="agente"):
-    from ponte.core.client import Client
-    from ponte.core.config import Config, MachineEntry
+    from relay.core.client import Client
+    from relay.core.config import Config, MachineEntry
 
     cfg = Config(name=controller)
     m = MachineEntry(name=agent_name, address="127.0.0.1", port=port, secret=secret)
@@ -407,7 +407,7 @@ def test_inv4_client_rejects_bad_frames(case):
 
 
 def test_inv4_connection_cut_mid_stream_is_an_error():
-    from ponte.core.errors import ConnectionFailed
+    from relay.core.errors import ConnectionFailed
 
     with pytest.raises(ConnectionFailed, match="no meio"):
         run_against(lambda r: [resp(KEY, r, 0, "aceito", job="j")])
@@ -442,7 +442,7 @@ def test_inv5_allowlist_reloads(agent):
         cfg.agent.allowed = ["100.64.0.0/10"]
 
     h.update(change)
-    from ponte.core.errors import ProtocolError
+    from relay.core.errors import ProtocolError
 
     with pytest.raises(ProtocolError, match="fechou a conexão"):
         h.client().ping()
@@ -456,7 +456,7 @@ def test_inv5_ip_allowed_helper(agent):
 
 
 def test_inv5_listen_address_never_wildcard():
-    from ponte.core.errors import ConfigError
+    from relay.core.errors import ConfigError
 
     cfg = config_mod.default_config("x").to_json()
     for bad in ("0.0.0.0", "::"):
@@ -470,13 +470,13 @@ def test_inv5_listen_address_never_wildcard():
 
 
 def test_inv6_refuses_root(tmp_path, monkeypatch):
-    from ponte.agent import server
-    from ponte.core.errors import PonteError
+    from relay.agent import server
+    from relay.core.errors import RelayError
 
     from ..helpers import AgentHarness
 
     monkeypatch.setattr(server.os, "geteuid", lambda: 0)
-    with pytest.raises(PonteError, match="não roda como root"):
+    with pytest.raises(RelayError, match="não roda como root"):
         AgentHarness(tmp_path / "a")
 
 
@@ -489,7 +489,7 @@ def test_inv7_config_must_be_private(agent):
     assert h.client().ping()
     os.chmod(h.config_path, 0o640)
     # Falha fechada: com o config inseguro o agente nem tem lista de IPs, e fecha tudo.
-    from ponte.core.errors import ProtocolError
+    from relay.core.errors import ProtocolError
 
     with pytest.raises(ProtocolError, match="fechou a conexão"):
         h.client().ping()
@@ -500,7 +500,7 @@ def test_inv7_config_must_be_private(agent):
 
 
 def test_inv7_config_symlink_refused(agent, tmp_path):
-    from ponte.core.errors import ConfigError
+    from relay.core.errors import ConfigError
 
     h = agent()
     link = tmp_path / "link.json"
@@ -728,11 +728,11 @@ def test_inv10_output_truncated(agent):
 
 def test_inv10_long_magic_line(agent):
     h = agent()
-    assert h.raw(b"PONTE/" + b"9" * 100) == protocol.MAGIC
+    assert h.raw(b"RELAY/" + b"9" * 100) == protocol.MAGIC
 
 
 def test_inv10_client_refuses_huge_response_frame():
-    from ponte.core.errors import ProtocolError
+    from relay.core.errors import ProtocolError
 
     with pytest.raises(ProtocolError, match="grande demais"):
         run_against(lambda r: [struct.pack(">I", protocol.MAX_RESPONSE_FRAME + 1)])
@@ -761,7 +761,7 @@ def test_inv11_garbage_after_magic(agent, junk):
     assert h.client().ping()
 
 
-@pytest.mark.parametrize("junk", [b"GET / HTTP/1.1\r\n\r\n", b"\xff" * 50, b"PONTE/1\n", b"\n"])
+@pytest.mark.parametrize("junk", [b"GET / HTTP/1.1\r\n\r\n", b"\xff" * 50, b"RELAY/1\n", b"\n"])
 def test_inv11_garbage_instead_of_magic(agent, junk):
     h = agent()
     h.raw(junk)
@@ -770,7 +770,7 @@ def test_inv11_garbage_instead_of_magic(agent, junk):
 
 def test_inv11_internal_error_is_signed_and_survives(agent, monkeypatch):
     h = agent()
-    from ponte.agent import server
+    from relay.agent import server
 
     def boom(*a, **k):
         raise RuntimeError("quebrou")
@@ -793,7 +793,7 @@ def test_inv11_slow_client_does_not_block_others(agent):
 
 
 def test_inv11_too_many_connections(agent):
-    from ponte.agent.server import MAX_CONNECTIONS
+    from relay.agent.server import MAX_CONNECTIONS
 
     h = agent()
     socks = []
@@ -833,12 +833,12 @@ def test_v1_client_gets_clear_error(agent):
 
 def test_future_client_sees_our_version(agent):
     h = agent()
-    assert h.raw(b"PONTE/3\n") == protocol.MAGIC
+    assert h.raw(b"RELAY/3\n") == protocol.MAGIC
 
 
 def test_v2_client_against_v1_server(tmp_path):
     """O cliente v2 explica que do outro lado pode estar o ponte.py antigo."""
-    from ponte.core.errors import ProtocolError
+    from relay.core.errors import ProtocolError
 
     srv = socket.socket()
     srv.bind(("127.0.0.1", 0))
@@ -860,7 +860,7 @@ def test_v2_client_against_v1_server(tmp_path):
 
 
 def test_v2_client_against_future_server():
-    from ponte.core.errors import ProtocolError
+    from relay.core.errors import ProtocolError
 
     srv = socket.socket()
     srv.bind(("127.0.0.1", 0))
@@ -870,7 +870,7 @@ def test_v2_client_against_future_server():
         conn, _ = srv.accept()
         with conn:
             conn.recv(100)
-            conn.sendall(b"PONTE/3\n")
+            conn.sendall(b"RELAY/3\n")
         srv.close()
 
     threading.Thread(target=v3, daemon=True).start()
@@ -880,7 +880,7 @@ def test_v2_client_against_future_server():
 
 def test_inv11_slow_loris_gets_cut_by_total_deadline(agent, monkeypatch):
     """Mandar um byte de vez em quando não segura a conexão além do prazo total."""
-    from ponte.agent import server
+    from relay.agent import server
 
     monkeypatch.setattr(server, "READ_TIMEOUT", 1.0)
     h = agent()
@@ -932,7 +932,7 @@ def _raw_from(ip_src: str, port: int, data: bytes, timeout: float = 10) -> bytes
 
 def test_review_one_ip_cannot_take_every_slot(agent):
     """Um IP só fica com até 4 vagas. Outro IP continua sendo atendido."""
-    from ponte.agent.server import MAX_PER_IP
+    from relay.agent.server import MAX_PER_IP
 
     h = agent()
     hogs = [socket.create_connection(("127.0.0.1", h.port)) for _ in range(MAX_PER_IP)]
@@ -951,7 +951,7 @@ def test_review_one_ip_cannot_take_every_slot(agent):
 
 def test_review_unknown_name_does_the_same_work(agent, monkeypatch):
     """Nome desconhecido também calcula o MAC, pra o tempo não denunciar quais nomes existem."""
-    from ponte.agent import server
+    from relay.agent import server
 
     h = agent()
     calls = []
@@ -978,7 +978,7 @@ def test_review_hostile_text_cannot_forge_logs_or_flood_audit(agent, capfd):
 
 
 def test_review_unauthenticated_audit_is_rate_limited(agent):
-    from ponte.agent.server import UNAUTH_AUDIT_PER_MINUTE
+    from relay.agent.server import UNAUTH_AUDIT_PER_MINUTE
 
     h = agent()
     for _ in range(UNAUTH_AUDIT_PER_MINUTE + 15):
@@ -1015,13 +1015,13 @@ def test_review_confirmation_enforced_by_agent(agent):
 
 
 def test_review_history_is_not_shared_between_controllers(agent):
-    from ponte.agent.jobs import KEEP_FINISHED
+    from relay.agent.jobs import KEEP_FINISHED
 
     h = agent()
     other = os.urandom(32)
 
     def add(cfg):
-        from ponte.core.config import ControllerEntry
+        from relay.core.config import ControllerEntry
 
         cfg.agent.controllers["outro"] = ControllerEntry("outro", other)
 
@@ -1044,7 +1044,7 @@ def test_review_client_caps_output_from_a_hostile_agent():
         out.append(resp(KEY, r, 60, "fim", True, resultado={"estado": "ok"}))
         return out
 
-    from ponte.core.client import MAX_KEPT_OUTPUT
+    from relay.core.client import MAX_KEPT_OUTPUT
 
     outcome = run_against(frames)
     assert outcome.truncated

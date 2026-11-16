@@ -9,9 +9,9 @@ import time
 
 import pytest
 
-from ponte.core import config as config_mod
-from ponte.core import pairing, protocol, spake2
-from ponte.core.errors import AuthError, ConnectionFailed, PonteError, ProtocolError
+from relay.core import config as config_mod
+from relay.core import pairing, protocol, spake2
+from relay.core.errors import AuthError, ConnectionFailed, ProtocolError, RelayError
 
 # ---------------------------------------------------------------------------
 # SPAKE2
@@ -104,7 +104,7 @@ def test_codes():
     assert pairing.format_code("12345678") == "1234 5678"
     assert pairing.normalize_code(" 1234-5678 ") == "12345678"
     for bad in ("1234", "1234567x", "123456789", "abcdefgh"):
-        with pytest.raises(PonteError):
+        with pytest.raises(RelayError):
             pairing.normalize_code(bad)
 
 
@@ -205,7 +205,7 @@ def test_window_checks_tailscale_node(tmp_path, monkeypatch):
         'if [ "$1" = status ]; then echo \'{"Self": {"DNSName": "agente.tail1.ts.net."}}\'; fi\n'
     )
     os.chmod(script, 0o700)
-    monkeypatch.setenv("PONTE_TAILSCALE", str(script))
+    monkeypatch.setenv("RELAY_TAILSCALE", str(script))
     cfg, _ = agent_config(tmp_path)
     cfg.agent.verify_tailscale = "sempre"
     w = pairing.PairingWindow(cfg, "127.0.0.1", port=0, seconds=5)
@@ -304,7 +304,7 @@ def test_not_a_pairing_port():
         conn, _ = srv.accept()
         with conn:
             conn.recv(100)
-            conn.sendall(b"PONTE/2\n")
+            conn.sendall(b"RELAY/2\n")
         srv.close()
 
     threading.Thread(target=serve, daemon=True).start()
