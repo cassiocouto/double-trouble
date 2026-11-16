@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=Relay
+GenericName=Comandos entre máquinas
+Comment=Rode comandos pré-aprovados na outra máquina
+Exec=@VENV@/bin/relay-gui
+Icon=dev.cass.Relay
+Terminal=false
+Categories=Utility;Network;GTK;
+Keywords=tailscale;remoto;comando;máquina;
+StartupNotify=true
+DBusActivatable=false
+X-GNOME-UsesNotifications=true

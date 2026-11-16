@@ -6,8 +6,8 @@ import os
 
 import pytest
 
-from ponte.core import commands, safety
-from ponte.core.errors import CommandError
+from relay.core import commands, safety
+from relay.core.errors import CommandError
 
 
 def test_metadata_defaults(make_cmd):
@@ -187,5 +187,5 @@ def test_notificar_example_ends_options():
     """O texto do usuário vem depois de "--", então não vira opção do notify-send."""
     from importlib import resources
 
-    code = (resources.files("ponte") / "data" / "exemplos" / "notificar.py").read_text()
+    code = (resources.files("relay") / "data" / "exemplos" / "notificar.py").read_text()
     assert '"--", f"Mensagem de {sender}", p["texto"]' in code

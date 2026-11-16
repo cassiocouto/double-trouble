@@ -1,4 +1,4 @@
-"""Fixtures comuns. Nenhum teste usa o ~/.config/ponte real."""
+"""Fixtures comuns. Nenhum teste usa o ~/.config/relay real."""
 
 from __future__ import annotations
 
@@ -11,13 +11,14 @@ import pytest
 
 @pytest.fixture(autouse=True)
 def isolated_dirs(tmp_path, monkeypatch):
-    """Toda pasta do ponte aponta pra dentro do tmp_path do teste."""
-    base = tmp_path / "ponte"
-    monkeypatch.setenv("PONTE_DIR", str(base))
-    monkeypatch.setenv("PONTE_STATE_DIR", str(tmp_path / "estado"))
-    monkeypatch.setenv("PONTE_DATA_DIR", str(tmp_path / "dados"))
+    """Toda pasta do relay aponta pra dentro do tmp_path do teste."""
+    base = tmp_path / "relay"
+    monkeypatch.setenv("RELAY_DIR", str(base))
+    monkeypatch.setenv("RELAY_STATE_DIR", str(tmp_path / "estado"))
+    monkeypatch.setenv("RELAY_DATA_DIR", str(tmp_path / "dados"))
+    monkeypatch.setenv("RELAY_LEGACY_DIR", str(tmp_path / "ponte-v1"))
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
-    # Comandos rodam num processo filho e importam ponte.comando, como no venv instalado.
+    # Comandos rodam num processo filho e importam relay.command, como no venv instalado.
     src = str(Path(__file__).resolve().parents[1] / "src")
     monkeypatch.setenv("PYTHONPATH", src)
     # Sem sessao grafica: nenhum teste deve conseguir mexer na tela.
@@ -46,8 +47,8 @@ def wait_until(pred, timeout: float = 5.0, step: float = 0.05) -> bool:
 
 @pytest.fixture
 def base(tmp_path) -> Path:
-    """PONTE_DIR com a pasta de comandos, os dois com modo 700."""
-    b = Path(os.environ["PONTE_DIR"])
+    """RELAY_DIR com a pasta de comandos, os dois com modo 700."""
+    b = Path(os.environ["RELAY_DIR"])
     b.mkdir(mode=0o700, exist_ok=True)
     (b / "comandos").mkdir(mode=0o700, exist_ok=True)
     return b

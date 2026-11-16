@@ -1,8 +1,8 @@
-# Protocolo do ponte, versão 2
+# Protocolo do relay, versão 2
 
 Este é o protocolo entre o **controlador** (CLI ou interface, o lado que manda)
-e o **agente** (o lado que executa). O código está em `src/ponte/core/protocol.py`
-(formato), `src/ponte/core/client.py` (controlador) e `src/ponte/agent/server.py`
+e o **agente** (o lado que executa). O código está em `src/relay/core/protocol.py`
+(formato), `src/relay/core/client.py` (controlador) e `src/relay/agent/server.py`
 (agente).
 
 O v2 não conversa com o v1. Versões diferentes param logo no começo, com um
@@ -17,7 +17,7 @@ erro claro dos dois lados.
 
 ## 2. Linha mágica (versão)
 
-1. O controlador manda os 8 bytes `PONTE/2\n`.
+1. O controlador manda os 8 bytes `RELAY/2\n`.
 2. O agente responde os mesmos 8 bytes.
 
 Casos de versão diferente:
@@ -25,7 +25,7 @@ Casos de versão diferente:
 | O agente recebe        | O agente faz                                      | O controlador mostra                    |
 |------------------------|---------------------------------------------------|-----------------------------------------|
 | `{` (cliente v1)       | manda uma linha JSON v1 com o erro e fecha        | o ponte.py v1 mostra o erro             |
-| `PONTE/<outra>\n`      | manda `PONTE/2\n` e fecha                         | "fala outra versão do protocolo"        |
+| `RELAY/<outra>\n`      | manda `RELAY/2\n` e fecha                         | "fala outra versão do protocolo"        |
 | qualquer outra coisa   | fecha sem mandar nada                             | —                                       |
 | (agente é o v1)        | o v1 não entende e fecha                          | "pode ser o ponte.py antigo (v1)"       |
 
@@ -50,7 +50,7 @@ Cada direção tem seu segredo de 32 bytes (ou mais). Pra direção
 controlador `C` → agente `A`, a chave de assinatura é
 
 ```
-K = HMAC-SHA256(segredo, JSON(["ponte/2", C, A]))
+K = HMAC-SHA256(segredo, JSON(["relay/2", C, A]))
 ```
 
 `JSON(...)` é `json.dumps` com `ensure_ascii=True`. A lista tira qualquer
@@ -66,7 +66,7 @@ não vale na outra.
 mac = hex(HMAC-SHA256(K, rotulo + canonico(mensagem sem "mac")))
 ```
 
-- `rotulo` é `ponte/2 pedido\n` pra pedidos e `ponte/2 resposta\n` pra
+- `rotulo` é `relay/2 pedido\n` pra pedidos e `relay/2 resposta\n` pra
   respostas. Uma mensagem assinada como pedido não vale como resposta.
 - `canonico` é `json.dumps(..., sort_keys=True, separators=(",", ":"), ensure_ascii=True)`.
 - `mac` tem exatamente 64 caracteres hexadecimais minúsculos. A comparação é
@@ -250,7 +250,7 @@ os padrões preenchidos. Parâmetro opcional sem valor e sem padrão chega como
 
 Por que stdin? Argumentos de linha de comando aparecem no `ps` pra qualquer
 usuário da máquina. Variável de ambiente vaza pra todo processo filho. O
-stdin é privado do comando. O helper `ponte.comando.parametros()` lê isso.
+stdin é privado do comando. O helper `relay.command.params()` lê isso.
 
 Comandos antigos com `ACEITA_ARGS = True` continuam recebendo `args` no
 `sys.argv`, como no v1.

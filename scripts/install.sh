@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Instala o ponte pro seu usuário, sem sudo.
+# Instala o relay pro seu usuário, sem sudo.
 #
 #   scripts/install.sh            agente e interface (padrão)
 #   scripts/install.sh --agente   só o agente (o lado que executa)
@@ -7,11 +7,11 @@
 #   scripts/install.sh --sim      não pergunta nada (aceita a migração do v1)
 #
 # O que ele faz
-#   * venv em ~/.local/share/ponte/venv (com --system-site-packages, pra ver o PyGObject)
-#   * links em ~/.local/bin (ponte, ponte-agent, ponte-gui)
+#   * venv em ~/.local/share/relay/venv (com --system-site-packages, pra ver o PyGObject)
+#   * links em ~/.local/bin (relay, relay-agent, relay-gui)
 #   * migra o ponte.py v1, se achar (pergunta antes)
-#   * agente: ~/.config/systemd/user/ponte-agent.service, habilitado e ligado
-#   * interface: ~/.local/share/applications/dev.cass.Ponte.desktop e o ícone
+#   * agente: ~/.config/systemd/user/relay-agent.service, habilitado e ligado
+#   * interface: ~/.local/share/applications/dev.cass.Relay.desktop e o ícone
 #
 # Se faltar pacote do sistema, ele mostra a linha "sudo apt install ..." pra
 # você rodar. Ele mesmo nunca roda sudo.
@@ -19,14 +19,15 @@
 set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PYTHON="${PONTE_PYTHON:-/usr/bin/python3}"
+PYTHON="${RELAY_PYTHON:-/usr/bin/python3}"
 DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
-VENV="$DATA_HOME/ponte/venv"
+VENV="$DATA_HOME/relay/venv"
 BIN_DIR="$HOME/.local/bin"
 UNIT_DIR="$HOME/.config/systemd/user"
 APPS_DIR="$DATA_HOME/applications"
 ICON_DIR="$DATA_HOME/icons/hicolor/scalable/apps"
-CONFIG_DIR="${PONTE_DIR:-$HOME/.config/ponte}"
+CONFIG_DIR="${RELAY_DIR:-$HOME/.config/relay}"
+LEGACY_DIR="${RELAY_LEGACY_DIR:-$HOME/.config/ponte}"  # onde o ponte.py v1 guardava as coisas
 
 want_agent=0
 want_gui=0
@@ -53,7 +54,7 @@ missing_apt=()
 notes=()
 
 if [[ "$(id -u)" == 0 ]]; then
-  say "Não rode como root. O ponte é instalado e roda como o seu usuário." >&2
+  say "Não rode como root. O relay é instalado e roda como o seu usuário." >&2
   exit 1
 fi
 
@@ -67,7 +68,7 @@ if [[ ! -x "$PYTHON" ]]; then
 fi
 py_version="$("$PYTHON" -c 'import sys; print("%d.%d" % sys.version_info[:2])')"
 if ! "$PYTHON" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)'; then
-  say "O ponte precisa de Python 3.10 ou mais novo. Aqui tem o $py_version."
+  say "O relay precisa de Python 3.10 ou mais novo. Aqui tem o $py_version."
   exit 1
 fi
 say "Python $py_version em $PYTHON"
@@ -136,66 +137,66 @@ trap 'rm -rf "$build_dir"' EXIT
 cp -r "$REPO/src" "$REPO/pyproject.toml" "$build_dir/"
 [[ -f "$REPO/README.md" ]] && cp "$REPO/README.md" "$build_dir/"
 "$VENV/bin/python" -m pip install "${pip_args[@]}" --upgrade "$build_dir"
-say "ponte $("$VENV/bin/ponte" --versao | awk '{print $2}') instalado"
+say "relay $("$VENV/bin/relay" --versao | awk '{print $2}') instalado"
 
 mkdir -p "$BIN_DIR"
-for exe in ponte ponte-agent ponte-gui; do
+for exe in relay relay-agent relay-gui; do
   ln -sfn "$VENV/bin/$exe" "$BIN_DIR/$exe"
 done
 case ":$PATH:" in
   *":$BIN_DIR:"*) ;;
-  *) notes+=("$BIN_DIR não está no seu PATH. Saia e entre de novo na sessão, ou use $VENV/bin/ponte") ;;
+  *) notes+=("$BIN_DIR não está no seu PATH. Saia e entre de novo na sessão, ou use $VENV/bin/relay") ;;
 esac
 
 # --------------------------------------------------------------------------
 step "Config em $CONFIG_DIR"
 
-PONTE="$VENV/bin/ponte"
-if [[ -f "$CONFIG_DIR/ponte.json" ]]; then
-  say "já existe $CONFIG_DIR/ponte.json, não mexo"
-elif [[ -f "$CONFIG_DIR/config.json" ]]; then
-  say "Achei o config do ponte.py v1."
+RELAY="$VENV/bin/relay"
+if [[ -f "$CONFIG_DIR/relay.json" ]]; then
+  say "já existe $CONFIG_DIR/relay.json, não mexo"
+elif [[ -f "$LEGACY_DIR/config.json" ]]; then
+  say "Achei o config do ponte.py v1 em $LEGACY_DIR."
   if [[ $assume_yes == 1 ]]; then
-    "$PONTE" migrar --sim
+    "$RELAY" migrar --sim
   elif [[ -t 0 ]]; then
     # Mostra o plano e pergunta antes de mudar qualquer coisa.
-    "$PONTE" migrar || say "Pulei a migração. Rode depois:  ponte migrar"
+    "$RELAY" migrar || say "Pulei a migração. Rode depois:  relay migrar"
   else
-    say "Pulei a migração (sem terminal pra perguntar). Rode depois:  ponte migrar"
+    say "Pulei a migração (sem terminal pra perguntar). Rode depois:  relay migrar"
   fi
 else
-  "$PONTE" init
+  "$RELAY" init
 fi
 
 # --------------------------------------------------------------------------
 if [[ $want_agent == 1 ]]; then
   step "Agente (serviço de usuário)"
   mkdir -p "$UNIT_DIR"
-  sed -e "s|@VENV@|$VENV|g" -e "s|@REPO@|$REPO|g" "$REPO/data/ponte-agent.service.in" > "$UNIT_DIR/ponte-agent.service"
-  say "escrevi $UNIT_DIR/ponte-agent.service"
+  sed -e "s|@VENV@|$VENV|g" -e "s|@REPO@|$REPO|g" "$REPO/data/relay-agent.service.in" > "$UNIT_DIR/relay-agent.service"
+  say "escrevi $UNIT_DIR/relay-agent.service"
   if systemctl --user daemon-reload 2>/dev/null; then
-    systemctl --user enable ponte-agent.service >/dev/null 2>&1 || true
-    if [[ -f "$CONFIG_DIR/ponte.json" ]]; then
-      systemctl --user restart --no-block ponte-agent.service
-      say "agente ligado. Logs:  journalctl --user -u ponte-agent -f"
+    systemctl --user enable relay-agent.service >/dev/null 2>&1 || true
+    if [[ -f "$CONFIG_DIR/relay.json" ]]; then
+      systemctl --user restart --no-block relay-agent.service
+      say "agente ligado. Logs:  journalctl --user -u relay-agent -f"
     else
-      notes+=("O agente está habilitado mas não ligado, porque ainda não tem config. Depois: systemctl --user start ponte-agent")
+      notes+=("O agente está habilitado mas não ligado, porque ainda não tem config. Depois: systemctl --user start relay-agent")
     fi
   else
-    notes+=("Não consegui falar com o systemd do usuário. Rode depois: systemctl --user daemon-reload && systemctl --user enable --now ponte-agent")
+    notes+=("Não consegui falar com o systemd do usuário. Rode depois: systemctl --user daemon-reload && systemctl --user enable --now relay-agent")
   fi
 
   port=47800
   pair_port=47801
-  if [[ -f "$CONFIG_DIR/ponte.json" ]]; then
-    read -r port pair_port < <("$VENV/bin/python" -c 'import json,sys; a=json.load(open(sys.argv[1]))["agente"]; print(a["porta"], a["porta_pareamento"])' "$CONFIG_DIR/ponte.json" 2>/dev/null || echo "47800 47801")
+  if [[ -f "$CONFIG_DIR/relay.json" ]]; then
+    read -r port pair_port < <("$VENV/bin/python" -c 'import json,sys; a=json.load(open(sys.argv[1]))["agente"]; print(a["porta"], a["porta_pareamento"])' "$CONFIG_DIR/relay.json" 2>/dev/null || echo "47800 47801")
   fi
   ufw_on=0
   if [[ -r /etc/ufw/ufw.conf ]] && grep -qi '^ENABLED=yes' /etc/ufw/ufw.conf; then ufw_on=1; fi
   if systemctl is-active --quiet ufw 2>/dev/null && [[ $ufw_on == 1 ]]; then
-    notes+=("O ufw está ativo. Pra liberar o ponte só na interface do Tailscale, rode:
-    sudo ufw allow in on tailscale0 to any port $port proto tcp comment 'ponte'
-    sudo ufw allow in on tailscale0 to any port $pair_port proto tcp comment 'ponte pareamento'")
+    notes+=("O ufw está ativo. Pra liberar o relay só na interface do Tailscale, rode:
+    sudo ufw allow in on tailscale0 to any port $port proto tcp comment 'relay'
+    sudo ufw allow in on tailscale0 to any port $pair_port proto tcp comment 'relay pareamento'")
   fi
 fi
 
@@ -203,11 +204,11 @@ fi
 if [[ $want_gui == 1 ]]; then
   step "Interface"
   mkdir -p "$APPS_DIR" "$ICON_DIR"
-  sed -e "s|@VENV@|$VENV|g" "$REPO/data/dev.cass.Ponte.desktop.in" > "$APPS_DIR/dev.cass.Ponte.desktop"
-  install -m 644 "$REPO/data/icons/dev.cass.Ponte.svg" "$ICON_DIR/dev.cass.Ponte.svg"
+  sed -e "s|@VENV@|$VENV|g" "$REPO/data/dev.cass.Relay.desktop.in" > "$APPS_DIR/dev.cass.Relay.desktop"
+  install -m 644 "$REPO/data/icons/dev.cass.Relay.svg" "$ICON_DIR/dev.cass.Relay.svg"
   command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database -q "$APPS_DIR" || true
   command -v gtk-update-icon-cache >/dev/null 2>&1 && gtk-update-icon-cache -q -t "$DATA_HOME/icons/hicolor" 2>/dev/null || true
-  say "Ponte aparece no menu de aplicativos (pode levar alguns segundos)"
+  say "Relay aparece no menu de aplicativos (pode levar alguns segundos)"
 fi
 
 # --------------------------------------------------------------------------
@@ -219,6 +220,6 @@ if [[ ${#notes[@]} -gt 0 ]]; then
   say ""
 fi
 say "Próximos passos"
-say "  1. Na máquina que vai EXECUTAR:   ponte parear"
-say "  2. Na máquina que vai MANDAR:     ponte parear --com <nome-da-outra>"
-say "  3. Teste:                         ponte ping <nome-da-outra>"
+say "  1. Na máquina que vai EXECUTAR:   relay parear"
+say "  2. Na máquina que vai MANDAR:     relay parear --com <nome-da-outra>"
+say "  3. Teste:                         relay ping <nome-da-outra>"

@@ -37,7 +37,7 @@ def home(tmp_path):
     env = {
         "HOME": str(home),
         "PATH": f"{bin_dir}:/usr/bin:/bin",
-        "PONTE_PYTHON": SYSTEM_PYTHON,
+        "RELAY_PYTHON": SYSTEM_PYTHON,
         "LANG": "C.UTF-8",
     }
     return home, env, log
@@ -55,9 +55,12 @@ def run(script, env, *args, stdin=None):
 
 
 def write_v1(home: Path):
-    cfg_dir = home / ".config" / "ponte"
+    cfg_dir = home / ".config" / "ponte"  # onde o ponte.py v1 guardava tudo
     (cfg_dir / "comandos").mkdir(parents=True, mode=0o700)
     os.chmod(cfg_dir, 0o700)
+    cmd = cfg_dir / "comandos" / "meu_comando.py"
+    cmd.write_text('"""Comando antigo."""\nprint("oi")\n')
+    os.chmod(cmd, 0o600)
     v1 = {
         "nome": "cass-dell-brasil",
         "escutar": "100.100.1.1",
@@ -84,25 +87,31 @@ def test_install_migrate_and_uninstall(home):
     assert r.returncode == 0, r.stdout + r.stderr
     out = r.stdout
 
-    venv = home / ".local" / "share" / "ponte" / "venv"
-    assert (venv / "bin" / "ponte-agent").exists()
-    for exe in ("ponte", "ponte-agent", "ponte-gui"):
+    venv = home / ".local" / "share" / "relay" / "venv"
+    assert (venv / "bin" / "relay-agent").exists()
+    for exe in ("relay", "relay-agent", "relay-gui"):
         assert os.readlink(home / ".local" / "bin" / exe) == str(venv / "bin" / exe)
 
-    # migração: ponte.json novo, config.json intacto, serviço v1 parado e desabilitado
+    # migração: relay.json novo, config.json intacto, serviço v1 parado e desabilitado
     assert (cfg_dir / "config.json").read_bytes() == v1_bytes
     assert list(cfg_dir.glob("config.json.v1-backup-*"))
-    new = json.loads((cfg_dir / "ponte.json").read_text())
+    new_dir = home / ".config" / "relay"
+    new = json.loads((new_dir / "relay.json").read_text())
+    # comando antigo copiado pra pasta nova, e o original continua lá
+    assert (new_dir / "comandos" / "meu_comando.py").read_text() == (
+        cfg_dir / "comandos" / "meu_comando.py"
+    ).read_text()
+    assert oct(os.stat(new_dir / "comandos" / "meu_comando.py").st_mode & 0o777) == "0o600"
     assert new["nome"] == "cass-dell-brasil" and "cass-dell-g15-5511" in new["maquinas"]
     calls = log.read_text()
     assert "--user stop ponte.service" in calls and "--user disable ponte.service" in calls
 
     # agente
-    unit = (home / ".config" / "systemd" / "user" / "ponte-agent.service").read_text()
-    assert f"ExecStart={venv}/bin/ponte-agent" in unit
+    unit = (home / ".config" / "systemd" / "user" / "relay-agent.service").read_text()
+    assert f"ExecStart={venv}/bin/relay-agent" in unit
     assert "@VENV@" not in unit and "@REPO@" not in unit
-    assert "--user enable ponte-agent.service" in calls
-    assert "--user restart --no-block ponte-agent.service" in calls
+    assert "--user enable relay-agent.service" in calls
+    assert "--user restart --no-block relay-agent.service" in calls
 
     # interface: aqui não tem GTK 4, então ele mostra a linha do apt e pula a interface
     gtk_ok = (
@@ -112,7 +121,7 @@ def test_install_migrate_and_uninstall(home):
         ).returncode
         == 0
     )
-    desktop = home / ".local" / "share" / "applications" / "dev.cass.Ponte.desktop"
+    desktop = home / ".local" / "share" / "applications" / "dev.cass.Relay.desktop"
     if gtk_ok:
         assert desktop.exists()
     else:
@@ -120,42 +129,42 @@ def test_install_migrate_and_uninstall(home):
         assert not desktop.exists()
     assert "sudo " not in calls  # nunca chamou sudo
 
-    # o ponte instalado funciona
-    r2 = subprocess.run([str(venv / "bin" / "ponte"), "maquinas"], env=env, capture_output=True, text=True)
+    # o relay instalado funciona
+    r2 = subprocess.run([str(venv / "bin" / "relay"), "maquinas"], env=env, capture_output=True, text=True)
     assert "cass-dell-g15-5511" in r2.stdout
 
     # desinstalar tira o programa e deixa config e comandos
     r = run("uninstall.sh", env)
     assert r.returncode == 0, r.stdout + r.stderr
     assert not venv.exists()
-    assert not (home / ".config" / "systemd" / "user" / "ponte-agent.service").exists()
-    assert not (home / ".local" / "bin" / "ponte").exists()
-    assert (cfg_dir / "ponte.json").exists() and (cfg_dir / "config.json").read_bytes() == v1_bytes
+    assert not (home / ".config" / "systemd" / "user" / "relay-agent.service").exists()
+    assert not (home / ".local" / "bin" / "relay").exists()
+    assert (new_dir / "relay.json").exists() and (cfg_dir / "config.json").read_bytes() == v1_bytes
 
 
 def test_install_fresh_agent_only(home):
     home, env, _log = home
     r = run("install.sh", env, "--agente")
     assert r.returncode == 0, r.stdout + r.stderr
-    cfg_dir = home / ".config" / "ponte"
-    assert (cfg_dir / "ponte.json").exists()
-    assert oct(os.stat(cfg_dir / "ponte.json").st_mode & 0o777) == "0o600"
+    cfg_dir = home / ".config" / "relay"
+    assert (cfg_dir / "relay.json").exists()
+    assert oct(os.stat(cfg_dir / "relay.json").st_mode & 0o777) == "0o600"
     assert {p.name for p in (cfg_dir / "comandos").iterdir()} == {
         "status.py",
         "notificar.py",
         "travar_tela.py",
         "abrir_url.py",
     }
-    assert not (home / ".local" / "share" / "applications" / "dev.cass.Ponte.desktop").exists()
+    assert not (home / ".local" / "share" / "applications" / "dev.cass.Relay.desktop").exists()
 
 
 def test_install_without_tty_skips_migration(home):
     home, env, _ = home
-    cfg_dir = write_v1(home)
+    write_v1(home)
     r = run("install.sh", env, "--agente")
     assert r.returncode == 0, r.stdout + r.stderr
     assert "Pulei a migração" in r.stdout
-    assert not (cfg_dir / "ponte.json").exists()
+    assert not (home / ".config" / "relay" / "relay.json").exists()
 
 
 def test_install_refuses_root(home):
@@ -168,7 +177,7 @@ def test_install_refuses_root(home):
 
 def test_uninstall_everything_asks(home):
     home, env, _ = home
-    cfg_dir = home / ".config" / "ponte"
+    cfg_dir = home / ".config" / "relay"
     cfg_dir.mkdir(parents=True)
     (cfg_dir / "x").write_text("x")
     r = run("uninstall.sh", env, "--tudo")  # sem terminal e sem --sim: não apaga

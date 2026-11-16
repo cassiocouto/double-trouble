@@ -1,15 +1,15 @@
-# Ponte
+# Relay
 
 Uma máquina roda comandos pré-aprovados na outra, pelo Tailscale.
 
 - **Agente**: o lado que executa. Fica rodando como serviço do seu usuário.
-- **Controlador**: o lado que manda. É a interface (o app **Ponte**) ou a
-  linha de comando (`ponte`).
+- **Controlador**: o lado que manda. É a interface (o app **Relay**) ou a
+  linha de comando (`relay`).
 
 A mesma máquina pode ter os dois. Feito pra `cass-dell-brasil` e
 `cass-dell-g15-5511`, mas funciona com qualquer número de máquinas.
 
-O agente só roda arquivos que **você** colocou em `~/.config/ponte/comandos/`.
+O agente só roda arquivos que **você** colocou em `~/.config/relay/comandos/`.
 Não existe campo de comando livre, nem shell.
 
 ---
@@ -29,29 +29,29 @@ O instalador confere isso e mostra a linha certa se faltar algo.
 **2. Baixe o projeto e rode o instalador.** Sem sudo:
 
 ```bash
-git clone https://github.com/cassiocouto/double-trouble.git ~/src/ponte
+git clone https://github.com/cassiocouto/double-trouble.git ~/src/relay
 ```
 
 ```bash
-~/src/ponte/scripts/install.sh
+~/src/relay/scripts/install.sh
 ```
 
-Ele cria um venv em `~/.local/share/ponte/venv`, instala o agente como
-serviço do usuário, coloca o Ponte no menu de aplicativos e cria os comandos
+Ele cria um venv em `~/.local/share/relay/venv`, instala o agente como
+serviço do usuário, coloca o Relay no menu de aplicativos e cria os comandos
 de exemplo. Se achar o `ponte.py` antigo, ele mostra o plano de migração e
 pergunta antes (veja "Vindo do ponte.py v1").
 
 Opções: `--agente` (só o lado que executa), `--gui` (só a interface).
 
 **3. Firewall.** Se o `ufw` estiver ligado, o instalador mostra estas duas
-linhas. Elas liberam o ponte só na interface do Tailscale:
+linhas. Elas liberam o relay só na interface do Tailscale:
 
 ```bash
-sudo ufw allow in on tailscale0 to any port 47800 proto tcp comment 'ponte'
+sudo ufw allow in on tailscale0 to any port 47800 proto tcp comment 'relay'
 ```
 
 ```bash
-sudo ufw allow in on tailscale0 to any port 47801 proto tcp comment 'ponte pareamento'
+sudo ufw allow in on tailscale0 to any port 47801 proto tcp comment 'relay pareamento'
 ```
 
 **4. Parear.** Uma vez pra cada direção. Exemplo: a brasil manda na G15.
@@ -59,7 +59,7 @@ sudo ufw allow in on tailscale0 to any port 47801 proto tcp comment 'ponte parea
 Na **G15** (a que vai executar):
 
 ```bash
-ponte parear
+relay parear
 ```
 
 Ela mostra um código de 8 números, válido por 2 minutos.
@@ -67,14 +67,14 @@ Ela mostra um código de 8 números, válido por 2 minutos.
 Na **brasil** (a que vai mandar):
 
 ```bash
-ponte parear --com cass-dell-g15-5511
+relay parear --com cass-dell-g15-5511
 ```
 
 Digite o código quando ele pedir (o código nunca vai na linha de comando).
 Pronto. Teste:
 
 ```bash
-ponte ping g15
+relay ping g15
 ```
 
 Pra G15 mandar na brasil também, faça o mesmo trocando os papéis.
@@ -87,7 +87,7 @@ código** recebe ele.
 
 ## Usar
 
-**Pela interface.** Abra o **Ponte** no menu de aplicativos.
+**Pela interface.** Abra o **Relay** no menu de aplicativos.
 
 1. A tela inicial mostra as máquinas, se estão online, a latência, a
    diferença de relógio e a versão do agente.
@@ -104,47 +104,47 @@ notificação quando ele acabar.
 `brasil`).
 
 ```bash
-ponte ping g15
+relay ping g15
 ```
 
 ```bash
-ponte listar g15
+relay listar g15
 ```
 
 ```bash
-ponte rodar g15 status
+relay rodar g15 status
 ```
 
 ```bash
-ponte rodar g15 notificar "oi do outro lado"
+relay rodar g15 notificar "oi do outro lado"
 ```
 
 ```bash
-ponte rodar g15 notificar -p texto="oi" -p urgente=sim
+relay rodar g15 notificar -p texto="oi" -p urgente=sim
 ```
 
 ```bash
-ponte historico g15
+relay historico g15
 ```
 
 O `rodar` mostra a saída ao vivo. O primeiro **Ctrl+C** cancela o job lá na
 outra máquina. O segundo sai na hora.
 
-Pra jobs longos: `ponte rodar g15 backup --sem-esperar` mostra o id do job.
-Depois, `ponte status g15 <id> --seguir` acompanha e `ponte cancelar g15 <id>`
+Pra jobs longos: `relay rodar g15 backup --sem-esperar` mostra o id do job.
+Depois, `relay status g15 <id> --seguir` acompanha e `relay cancelar g15 <id>`
 para.
 
-Outros comandos úteis: `ponte maquinas`, `ponte comandos`, `ponte config`,
-`ponte agente revogar <nome>`. Veja todos com `ponte --help`.
+Outros comandos úteis: `relay maquinas`, `relay comandos`, `relay config`,
+`relay agente revogar <nome>`. Veja todos com `relay --help`.
 
 ---
 
 ## Criar um comando novo
 
-Um comando é um arquivo Python em `~/.config/ponte/comandos/`. O nome do
+Um comando é um arquivo Python em `~/.config/relay/comandos/`. O nome do
 arquivo vira o nome do comando: letras minúsculas, números, `_` e `-`.
 
-Exemplo, `~/.config/ponte/comandos/volume.py`:
+Exemplo, `~/.config/relay/comandos/volume.py`:
 
 ```python
 """Muda o volume do som.
@@ -154,7 +154,7 @@ Usa o wpctl do PipeWire.
 
 import subprocess
 
-from ponte.comando import parametros
+from relay.command import params
 
 ICONE = "audio-volume-high-symbolic"
 CATEGORIA = "Som"
@@ -164,7 +164,7 @@ PARAMETROS = [
     {"nome": "mudo", "tipo": "booleano", "rotulo": "Sem som"},
 ]
 
-p = parametros()
+p = params()
 subprocess.run(["wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", f"{p['nivel']}%"], check=True)
 subprocess.run(["wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "1" if p["mudo"] else "0"], check=True)
 print(f"volume em {p['nivel']}%")
@@ -173,7 +173,7 @@ print(f"volume em {p['nivel']}%")
 Depois, confira se ele foi aceito:
 
 ```bash
-ponte comandos
+relay comandos
 ```
 
 Se aparecer **BLOQUEADO**, a linha diz o motivo.
@@ -182,7 +182,7 @@ Se aparecer **BLOQUEADO**, a linha diz o motivo.
 nem pra outros. Na dúvida:
 
 ```bash
-chmod 600 ~/.config/ponte/comandos/volume.py
+chmod 600 ~/.config/relay/comandos/volume.py
 ```
 
 ### O que dá pra colocar no arquivo
@@ -220,15 +220,15 @@ precisar:
 | `opcoes` | Lista de textos pra escolher | escolha |
 
 O agente confere tudo antes de rodar. Os valores chegam como JSON no stdin
-do comando, e `parametros()` lê isso pra você. Um parâmetro opcional sem
+do comando, e `params()` lê isso pra você. Um parâmetro opcional sem
 valor chega como `None` (ou `False`, se for booleano).
 
 ### Dicas
 
-- `from ponte.comando import quem_chamou` diz qual máquina pediu.
+- `from relay.command import caller` diz qual máquina pediu.
 - O que o comando imprimir volta pra quem chamou. O código de saída também.
 - **Programa que precisa continuar aberto** (um navegador, um app): use
-  `soltar(["xdg-open", url])` de `ponte.comando`. Sem isso, ele morre quando o
+  `detach(["xdg-open", url])` de `relay.command`. Sem isso, ele morre quando o
   comando acabar, porque o agente encerra tudo que o comando deixou rodando.
 - `sudo` e `pkexec` não funcionam dentro de um comando, de propósito.
 - Nunca monte uma linha de shell com os parâmetros. Passe uma lista pro
@@ -236,7 +236,7 @@ valor chega como `None` (ou `False`, se for booleano).
 
 Os quatro exemplos (`status`, `notificar`, `travar_tela`, `abrir_url`) estão
 na pasta de comandos. Pra trocar versões antigas pelas novas:
-`ponte exemplos --atualizar` (pergunta antes e guarda as antigas).
+`relay exemplos --atualizar` (pergunta antes e guarda as antigas).
 
 ---
 
@@ -245,13 +245,13 @@ na pasta de comandos. Pra trocar versões antigas pelas novas:
 **Ver os logs do agente.** Quase sempre a resposta está aqui:
 
 ```bash
-journalctl --user -u ponte-agent -f
+journalctl --user -u relay-agent -f
 ```
 
 E o estado do serviço:
 
 ```bash
-systemctl --user status ponte-agent
+systemctl --user status relay-agent
 ```
 
 **"esperando o Tailscale subir".** O agente escuta no IP do Tailscale. Ele
@@ -274,7 +274,7 @@ lá), ou lá ainda está rodando o `ponte.py` antigo.
 
 **"recusou sem assinar" / "não aceitou esta máquina".** As duas máquinas não
 estão pareadas nessa direção (ou foram revogadas). Pareie de novo com
-`ponte parear`.
+`relay parear`.
 
 **"relógios fora de sincronia".** A diferença passou de 60 s. Confira nas duas:
 
@@ -288,22 +288,22 @@ Se "System clock synchronized" estiver "no":
 sudo timedatectl set-ntp true
 ```
 
-**O comando aparece como BLOQUEADO.** Rode `ponte comandos` na máquina do
+**O comando aparece como BLOQUEADO.** Rode `relay comandos` na máquina do
 comando. O motivo aparece do lado: permissão aberta (`chmod 600 arquivo`),
 erro de sintaxe, `PARAMETROS` inválido, link simbólico.
 
 **"tem permissões abertas demais" no config.** Rode `chmod 600
-~/.config/ponte/ponte.json`. Com o config inseguro, o agente recusa tudo até
+~/.config/relay/relay.json`. Com o config inseguro, o agente recusa tudo até
 você consertar. É de propósito.
 
-**A interface não abre.** Rode `ponte-gui` num terminal e veja a mensagem.
+**A interface não abre.** Rode `relay-gui` num terminal e veja a mensagem.
 Normalmente falta pacote do apt (veja "Instalar", passo 1).
 
-**Um navegador aberto pelo comando fecha sozinho.** Use `soltar()` (veja
+**Um navegador aberto pelo comando fecha sozinho.** Use `detach()` (veja
 "Dicas").
 
 **Auditoria.** Tudo que o agente recusou ou rodou fica em
-`~/.local/state/ponte/auditoria.jsonl` (quem, o quê, parâmetros, código,
+`~/.local/state/relay/auditoria.jsonl` (quem, o quê, parâmetros, código,
 duração).
 
 ---
@@ -313,26 +313,30 @@ duração).
 O instalador detecta o `ponte.service` antigo e pergunta. Ou rode:
 
 ```bash
-ponte migrar
+relay migrar
 ```
 
 Ele mostra o plano e pergunta antes. O que acontece:
 
 - o `ponte.service` antigo é parado e desabilitado (o arquivo fica);
-- o `config.json` do v1 **não muda**, e ganha um backup do lado;
-- o v2 grava `~/.config/ponte/ponte.json` com o mesmo nome, porta, máquinas e
+- o `~/.config/ponte/config.json` do v1 **não muda**, e ganha um backup do lado;
+- o Relay grava `~/.config/relay/relay.json` com o mesmo nome, porta, máquinas e
   segredo;
-- a pasta de comandos não muda. Os comandos antigos continuam funcionando.
+- os comandos de `~/.config/ponte/comandos` são **copiados** pra
+  `~/.config/relay/comandos`. Os originais ficam onde estão. Os comandos antigos
+  continuam funcionando, inclusive os que leem `PONTE_DE`.
+
+Depois disso, edite os comandos na pasta nova, `~/.config/relay/comandos`.
 
 **Depois de migrar, pareie de novo** nas duas direções. O v1 usava o mesmo
 segredo pras duas, e o v2 prefere um por direção.
 
-O v1 e o v2 não conversam entre si. Atualize as duas máquinas.
+O v1 e o Relay não conversam entre si. Atualize as duas máquinas.
 
 Pra voltar pro v1:
 
 ```bash
-systemctl --user disable --now ponte-agent
+systemctl --user disable --now relay-agent
 ```
 
 ```bash
@@ -344,7 +348,7 @@ systemctl --user enable --now ponte.service
 ## Desinstalar
 
 ```bash
-~/src/ponte/scripts/uninstall.sh
+~/src/relay/scripts/uninstall.sh
 ```
 
 Isso tira o serviço, o venv, o atalho e o ícone. Config, comandos, auditoria
@@ -354,7 +358,7 @@ e histórico ficam. Pra apagar tudo, use `--tudo` (ele pergunta antes).
 
 ## Mais detalhes
 
-- `docs/SEGURANCA.md`: do que o ponte se protege e como.
+- `docs/SEGURANCA.md`: do que o relay se protege e como.
 - `docs/PROTOCOLO.md`: o protocolo v2, mensagem por mensagem.
 - `DECISIONS.md`: cada decisão importante, com o porquê.
 
@@ -376,7 +380,7 @@ python3 -m venv --system-site-packages .venv
 .venv/bin/ruff check src tests
 ```
 
-Os testes nunca usam o seu `~/.config/ponte` e nunca rodam comandos que mexem
+Os testes nunca usam o seu `~/.config/relay` e nunca rodam comandos que mexem
 na tela. Eles precisam rodar como usuário comum (o agente se recusa a rodar
 como root). Se tiver GTK 4 e `xvfb-run`, um teste abre a interface numa tela
 falsa.

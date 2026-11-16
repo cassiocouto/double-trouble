@@ -10,13 +10,13 @@ from pathlib import Path
 import pytest
 
 REPO = Path(__file__).resolve().parents[2]
-TEMPLATE = REPO / "data" / "ponte-agent.service.in"
+TEMPLATE = REPO / "data" / "relay-agent.service.in"
 
 
 def render(tmp_path: Path) -> Path:
-    unit = tmp_path / "ponte-agent.service"
+    unit = tmp_path / "relay-agent.service"
     text = TEMPLATE.read_text().replace("@VENV@", "/usr").replace("@REPO@", str(REPO))
-    text = text.replace("ExecStart=/usr/bin/ponte-agent", "ExecStart=/usr/bin/true")
+    text = text.replace("ExecStart=/usr/bin/relay-agent", "ExecStart=/usr/bin/true")
     unit.write_text(text)
     return unit
 

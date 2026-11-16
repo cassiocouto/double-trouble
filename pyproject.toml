@@ -3,7 +3,7 @@ requires = ["setuptools>=61"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "ponte"
+name = "relay"
 version = "2.0.0"
 description = "Uma máquina roda comandos pré-aprovados na outra, pelo Tailscale."
 readme = "README.md"
@@ -16,17 +16,17 @@ dependencies = []
 dev = ["pytest>=7", "ruff>=0.5"]
 
 [project.scripts]
-ponte = "ponte.cli.main:main"
-ponte-agent = "ponte.agent.main:main"
+relay = "relay.cli.main:main"
+relay-agent = "relay.agent.main:main"
 
 [project.gui-scripts]
-ponte-gui = "ponte.gui.app:main"
+relay-gui = "relay.gui.app:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.setuptools.package-data]
-ponte = ["data/*", "data/exemplos/*.py"]
+relay = ["data/*", "data/exemplos/*.py"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -13,11 +13,11 @@ from pathlib import Path
 
 import pytest
 
-from ponte.agent import systemd
-from ponte.agent.audit import AuditLog
-from ponte.agent.service import AgentService
-from ponte.core import config as config_mod
-from ponte.core.config import ConfigSource, ControllerEntry
+from relay.agent import systemd
+from relay.agent.audit import AuditLog
+from relay.agent.service import AgentService
+from relay.core import config as config_mod
+from relay.core.config import ConfigSource, ControllerEntry
 
 from ..conftest import wait_until
 from ..helpers import free_port
@@ -29,7 +29,7 @@ class NotifySocket:
     def __init__(self, path: Path, abstract: bool = False):
         self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
         if abstract:
-            self.name = f"@ponte-teste-{os.getpid()}-{time.monotonic_ns()}"
+            self.name = f"@relay-teste-{os.getpid()}-{time.monotonic_ns()}"
             self.sock.bind("\0" + self.name[1:])
         else:
             self.name = str(path)
@@ -126,7 +126,7 @@ def test_audit_refuses_open_dir(tmp_path, capsys):
 
 
 def make_config(tmp_path, port=0):
-    base = tmp_path / "ponte"
+    base = tmp_path / "relay"
     (base / "comandos").mkdir(parents=True, mode=0o700)
     os.chmod(base, 0o700)
     cfg = config_mod.Config(name="agente")
@@ -136,7 +136,7 @@ def make_config(tmp_path, port=0):
     cfg.agent.verify_tailscale = "nunca"
     secret = os.urandom(32)
     cfg.agent.controllers["controle"] = ControllerEntry("controle", secret)
-    config_mod.save(cfg, base / "ponte.json")
+    config_mod.save(cfg, base / "relay.json")
     return base, secret
 
 
@@ -150,7 +150,7 @@ def test_service_waits_for_tailscale_then_listens(tmp_path):
 
     sent = []
     svc = AgentService(
-        ConfigSource(base / "ponte.json"),
+        ConfigSource(base / "relay.json"),
         base_dir=base,
         notify=lambda *m: sent.append(m) or True,
         find_ip=find_ip,
@@ -175,7 +175,7 @@ def test_service_sends_ready_after_grace_without_tailscale(tmp_path):
     base, _ = make_config(tmp_path)
     sent = []
     svc = AgentService(
-        ConfigSource(base / "ponte.json"),
+        ConfigSource(base / "relay.json"),
         base_dir=base,
         notify=lambda *m: sent.append(m) or True,
         find_ip=lambda: None,
@@ -195,7 +195,7 @@ def test_service_rebinds_when_ip_changes(tmp_path):
     base, _secret = make_config(tmp_path, port=free_port())
     ip = {"v": "127.0.0.1"}
     svc = AgentService(
-        ConfigSource(base / "ponte.json"),
+        ConfigSource(base / "relay.json"),
         base_dir=base,
         notify=lambda *m: True,
         find_ip=lambda: ip["v"],
@@ -213,8 +213,8 @@ def test_service_rebinds_when_ip_changes(tmp_path):
 def test_service_survives_broken_config(tmp_path):
     base, _ = make_config(tmp_path)
     sent = []
-    source = ConfigSource(base / "ponte.json")
-    (base / "ponte.json").write_text("{quebrado")
+    source = ConfigSource(base / "relay.json")
+    (base / "relay.json").write_text("{quebrado")
     svc = AgentService(
         source, base_dir=base, notify=lambda *m: sent.append(m) or True, find_ip=lambda: "127.0.0.1", ready_grace=0
     )
@@ -228,8 +228,8 @@ def test_service_survives_broken_config(tmp_path):
 
 
 def test_service_audits_job_end(tmp_path):
-    from ponte.core.client import Client
-    from ponte.core.config import Config, MachineEntry
+    from relay.core.client import Client
+    from relay.core.config import Config, MachineEntry
 
     base, secret = make_config(tmp_path)
     p = base / "comandos" / "oi.py"
@@ -237,7 +237,7 @@ def test_service_audits_job_end(tmp_path):
     os.chmod(p, 0o600)
     audit = AuditLog(tmp_path / "estado")
     svc = AgentService(
-        ConfigSource(base / "ponte.json"),
+        ConfigSource(base / "relay.json"),
         audit=audit,
         base_dir=base,
         notify=lambda *m: True,
@@ -269,18 +269,18 @@ def test_agent_process_notifies_systemd(tmp_path):
     def loopback(cfg):
         cfg.agent.listen = "127.0.0.1"
 
-    config_mod.update(loopback, base / "ponte.json")
+    config_mod.update(loopback, base / "relay.json")
     ns = NotifySocket(tmp_path / "notify")
     env = {
         "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
         "HOME": str(tmp_path),
-        "PONTE_DIR": str(base),
-        "PONTE_STATE_DIR": str(tmp_path / "estado"),
+        "RELAY_DIR": str(base),
+        "RELAY_STATE_DIR": str(tmp_path / "estado"),
         "PYTHONPATH": str(SRC),
         "NOTIFY_SOCKET": ns.name,
         "WATCHDOG_USEC": "1000000",
     }
-    proc = subprocess.Popen([sys.executable, "-m", "ponte.agent"], env=env, stderr=subprocess.PIPE, text=True)
+    proc = subprocess.Popen([sys.executable, "-m", "relay.agent"], env=env, stderr=subprocess.PIPE, text=True)
     try:
         assert wait_until(lambda: ns.has("READY=1"), timeout=10)
         assert wait_until(lambda: ns.has("WATCHDOG=1"), timeout=5)
@@ -294,9 +294,9 @@ def test_agent_process_notifies_systemd(tmp_path):
 
 
 def test_agent_process_refuses_root(tmp_path, monkeypatch):
-    from ponte.agent import service
-    from ponte.core.errors import PonteError
+    from relay.agent import service
+    from relay.core.errors import RelayError
 
     monkeypatch.setattr(os, "geteuid", lambda: 0)
-    with pytest.raises(PonteError, match="não roda como root"):
+    with pytest.raises(RelayError, match="não roda como root"):
         service.check_not_root()

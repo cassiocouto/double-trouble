@@ -7,10 +7,10 @@ fim de cada fase.
 
 **D01. Trabalho feito numa máquina de nuvem, não na cass-dell-brasil.**
 O `hostname` aqui é `vm` (Ubuntu 24.04, Python 3.12 do sistema). Por isso
-nada aqui toca no `~/.config/ponte` real, e não dá pra acessar a G15. A
+nada aqui toca no `~/.config/relay` real, e não dá pra acessar a G15. A
 instalação nas duas máquinas fica pra você, com os passos no README.
 
-**D02. O `ponte.py` original fica em `legacy/ponte.py`, sem mudanças.**
+**D02. O `ponte.py` original fica em `legacy/v1_original.py`, sem mudanças.**
 Os testes da fase 0 carregam esse arquivo direto. Assim dá pra comparar o v1
 com o v2 a qualquer momento, e o script antigo continua disponível.
 
@@ -47,7 +47,7 @@ O agente abre o arquivo com `O_NOFOLLOW` (e `O_NONBLOCK`, pra um FIFO não
 travar tudo), confere dono e modo pelo `fstat`, lê os metadados desse
 conteúdo e executa `/proc/self/fd/N`. Trocar o arquivo entre a checagem e a
 execução não muda o que roda. O `__file__` do comando vira `/proc/self/fd/N`,
-então o caminho real vai em `PONTE_COMANDO_ARQUIVO`.
+então o caminho real vai em `RELAY_COMMAND_FILE`.
 
 **D09. O grupo de processos morre quando o comando acaba.**
 No v1, um filho deixado pelo comando vivia pra sempre, sem timeout. Agora,
@@ -55,7 +55,7 @@ quando o processo principal termina, o resto do grupo recebe SIGTERM e,
 3 s depois, SIGKILL. O líder só é colhido depois disso (`waitid` com
 `WNOWAIT`), então o número do grupo nunca é reusado no meio do caminho. Quem
 quer deixar um programa aberto (um navegador) solta ele de propósito com
-`ponte.comando.soltar()`. Isso fecha a invariante 9 sem exceção.
+`relay.command.detach()`. Isso fecha a invariante 9 sem exceção.
 
 **D10. Saída lida por pipe, com limite, e o excesso é descartado.**
 O v1 mandava a saída pra arquivo temporário, que podia crescer sem limite no
@@ -74,7 +74,7 @@ e tira a ambiguidade de qual valor vale numa chave repetida.
 ## Fase 2
 
 **D13. Uma linha mágica antes dos frames.**
-O controlador manda `PONTE/2\n` e o agente devolve a mesma. Isso dá erro
+O controlador manda `RELAY/2\n` e o agente devolve a mesma. Isso dá erro
 claro nos dois sentidos: um cliente v1 recebe uma linha JSON no formato dele
 dizendo pra atualizar, e um controlador v2 falando com o ponte.py antigo
 avisa que "pode ser o v1". Custa 8 bytes.
@@ -101,7 +101,7 @@ argv aparece no `ps` pra outros usuários da máquina (está no modelo de
 ameaça). Variável de ambiente vaza pros filhos e tem limite de tamanho. O
 stdin é privado. O agente escreve o JSON num arquivo temporário já apagado
 e passa como stdin, pra nunca travar se o comando não ler. O helper é
-`ponte.comando.parametros()`.
+`relay.command.params()`.
 
 **D18. PARAMETROS inválido bloqueia o comando.**
 Se o esquema não for um literal, ou tiver erro (tipo desconhecido, regex
@@ -115,7 +115,7 @@ Só `multilinha: True` aceita `\n` e `\t`. Isso evita sequências de escape de
 terminal e quebras de linha inesperadas em comandos que montam texto.
 
 **D20. Config quebrado ou inseguro faz o agente recusar tudo.**
-O agente recarrega o `ponte.json` sozinho quando o arquivo muda. Se o novo
+O agente recarrega o `relay.json` sozinho quando o arquivo muda. Se o novo
 estiver com erro, ou com permissão aberta, ele não segue com o config
 anterior: recusa todas as conexões até alguém consertar, e avisa no log. Um
 config que ficou legível por outros pode ter vazado segredo.
@@ -141,7 +141,7 @@ O segundo sai na hora e o job pode continuar lá. A rede roda numa thread
 separada, então o Ctrl+C nunca corta uma resposta no meio.
 
 **D25. Argumentos soltos na CLI viram parâmetros, em ordem.**
-`ponte rodar g15 notificar "oi"` continua funcionando como no v1: o "oi" vai
+`relay rodar g15 notificar "oi"` continua funcionando como no v1: o "oi" vai
 pro primeiro parâmetro que faltar. Também dá pra usar `-p texto=oi`.
 
 **D26. O comando `status` do exemplo é o único que os testes rodam.**
@@ -187,21 +187,21 @@ como se fosse um serviço do sistema. Quase todos os itens vermelhos só
 importam pra quem roda como root. Um teste confere que os itens que
 escolhemos aparecem como ✓.
 
-**D31. `RestrictNamespaces=yes` e `soltar()`.**
+**D31. `RestrictNamespaces=yes` e `detach()`.**
 Navegadores e Flatpak usam namespaces. Como os comandos herdam as regras do
-agente, quem abre esses programas precisa usar `ponte.comando.soltar()`. Ele
+agente, quem abre esses programas precisa usar `relay.command.detach()`. Ele
 usa `systemd-run --user`, que cria uma unidade própria fora do agente (sem
 essas regras e sem morrer quando o agente reinicia). O `abrir_url` já faz isso.
 
 **D32. Auditoria com teto de disco.**
-JSON lines em `~/.local/state/ponte/auditoria.jsonl`, modo 600, pasta 700.
+JSON lines em `~/.local/state/relay/auditoria.jsonl`, modo 600, pasta 700.
 Gira em 1 MiB e guarda 5 arquivos, então usa no máximo uns 6 MiB. Registra
 recusas (IP, assinatura, replay, permissão, whois), o início (`rodar`, com
 parâmetros) e o fim (`fim`, com código, estado e duração). Parâmetros com
 `segredo: True` aparecem como `***`. Texto longo é cortado em 200 caracteres.
 
 **D33. A migração não sobrescreve nada.**
-O v2 usa um arquivo novo, `ponte.json`. O `config.json` do v1 fica intacto,
+O v2 usa um arquivo novo, `relay.json`. O `config.json` do v1 fica intacto,
 e ganha uma cópia de backup do lado. O `ponte.service` antigo é parado e
 desabilitado, mas o arquivo fica. Voltar pro v1 é
 `systemctl --user enable --now ponte.service`. O `install.sh` mostra o plano
@@ -214,7 +214,7 @@ Se o setuptools do sistema servir, instala sem baixar nada
 
 **D35. O instalador usa `/usr/bin/python3`.**
 É o Python do apt, o único que enxerga o PyGObject do apt. Dá pra trocar com
-`PONTE_PYTHON`. Nesta máquina de nuvem o `/usr/bin/python3` é um 3.13 sem
+`RELAY_PYTHON`. Nesta máquina de nuvem o `/usr/bin/python3` é um 3.13 sem
 PyGObject, então os testes usam o `/usr/bin/python3.12`.
 
 **D36. Mira no Ubuntu 24.04.**
@@ -222,9 +222,9 @@ Não consegui ver as duas máquinas, então mirei no Ubuntu desta: 24.04, com
 Python 3.12, GTK 4.14 e libadwaita 1.5. O código roda em Python 3.10 ou mais
 novo. O instalador confere a libadwaita 1.5 e mostra a linha do apt se faltar.
 
-**D37. `ponte exemplos --atualizar` pra quem migrou.**
-A migração não mexe na pasta de comandos. Os exemplos antigos continuam
-funcionando (o `ACEITA_ARGS` ainda vale). Pra trocar pelas versões novas,
+**D37. `relay exemplos --atualizar` pra quem migrou.**
+A migração copia os comandos do v1 sem mudar nada neles. Os exemplos antigos
+continuam funcionando (o `ACEITA_ARGS` ainda vale). Pra trocar pelas versões novas,
 com `PARAMETROS`, existe esse comando. Ele pergunta antes e guarda os antigos
 como `.bak`.
 
@@ -265,7 +265,7 @@ Antes o agente aceitava `""` num texto obrigatório. Agora recusa ("não pode
 ficar vazio"). Vale pra CLI, interface e agente.
 
 **D43. Histórico em SQLite, sem segredos.**
-`~/.local/share/ponte/historico.sqlite3`, modo 600. Guarda até 1000
+`~/.local/share/relay/historico.sqlite3`, modo 600. Guarda até 1000
 execuções. Parâmetros marcados como `segredo` ficam como `***` e nunca são
 preenchidos de novo no "Rodar de novo". Uma execução que estava rodando
 quando a janela fechou aparece como "Sem resultado".
@@ -296,9 +296,9 @@ Letras confundem fácil (0 e O, 1 e l, b e d). Números em dois grupos de 4
 são mais fáceis de ler e digitar. O controlador aceita com espaço ou hífen.
 
 **D48. Pareamento numa porta separada e num processo separado.**
-A janela roda na porta 47801, aberta pelo `ponte parear` (ou pela interface)
+A janela roda na porta 47801, aberta pelo `relay parear` (ou pela interface)
 só por 2 minutos. O agente principal nem sabe que ela existe: o pareamento
-grava o `ponte.json` e o agente relê sozinho. Assim o código de pareamento
+grava o `relay.json` e o agente relê sozinho. Assim o código de pareamento
 não fica exposto o tempo todo, e um bug nele não derruba o agente.
 
 **D49. Cada pareamento vale pra uma direção.**
@@ -350,7 +350,7 @@ existiam. Agora ele calcula com uma chave qualquer.
 
 **D58. Backups com modo 600 desde o primeiro byte, e pasta do config
 conferida.** O `shutil.copy2` criava a cópia aberta e só depois mudava o
-modo. Agora usa a mesma escrita privada do resto. O `ponte.json` também é
+modo. Agora usa a mesma escrita privada do resto. O `relay.json` também é
 recusado se a pasta dele for gravável por outros.
 
 **D59. `CONFIRMAR` também no agente.** O agente exige `"confirmado": true`.
@@ -367,3 +367,40 @@ virava opção do `notify-send`.
 **Ficou como limite conhecido** (está no `docs/SEGURANCA.md`): processo que
 sai do grupo de propósito (`setsid`) não é morto no timeout. Um cgroup por
 job resolveria, e ficou como melhoria futura.
+
+## Nome novo e branches
+
+**D62. O projeto se chama Relay.**
+Você não gostou do nome antigo. "Relay" é inglês, genérico e diz o que o
+programa faz: repassa um pedido de uma máquina pra outra. Mudou tudo que tem
+nome: o pacote (`relay`), os comandos (`relay`, `relay-agent`, `relay-gui`),
+o app (`dev.cass.Relay`), o serviço (`relay-agent.service`), as pastas
+(`~/.config/relay`, `~/.local/state/relay`, `~/.local/share/relay`), o arquivo
+de config (`relay.json`), as variáveis de ambiente (`RELAY_*`) e os rótulos do
+protocolo (`RELAY/2`, `RELAY-PAR/1`). Os textos da tela e das mensagens
+continuam em português, como no pedido original.
+
+**D63. Só o que é do v1 continua com o nome antigo.**
+A migração ainda procura `~/.config/ponte/config.json` e o `ponte.service` que
+roda `ponte.py servir`, porque é isso que está nas suas máquinas. O script
+original foi pra `legacy/v1_original.py`, sem mudar uma linha.
+
+**D64. A migração copia os comandos pra pasta nova.**
+Com a pasta de config nova, os comandos de `~/.config/ponte/comandos` são
+copiados (modo 600) pra `~/.config/relay/comandos`. Os originais ficam onde
+estão, então voltar pro v1 continua funcionando. Um comando que já existe na
+pasta nova nunca é sobrescrito.
+
+**D65. Ajuda dos comandos em inglês: `relay.command`.**
+`params()`, `caller()` e `detach()` (antes `parametros()`, `quem_chamou()` e
+`soltar()`). O pedido original era identificadores em inglês, e a troca de
+nome foi a hora certa de acertar isso. O comando recebe `RELAY_CALLER`,
+`RELAY_COMMAND` e `RELAY_COMMAND_FILE` no ambiente, e também `PONTE_DE`, só
+pra não quebrar comandos antigos do v1 que liam essa variável.
+
+**D66. Branches com nome que diz o que fazem, mergeados no `main`.**
+`feature/...` pra coisa nova, `fix/...` pra correção, `refactor/...` pra
+reorganizar, `docs/...` e `chore/...` pro resto. Quando o trabalho termina e
+os testes passam, o branch é mergeado no `main` (com `--no-ff`, pra ficar
+claro no histórico o que veio junto). A regra está no `CLAUDE.md`, pra valer
+também nas próximas sessões.
