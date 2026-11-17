@@ -89,3 +89,28 @@ def test_gui_without_gtk_explains_what_to_install():
     )
     assert r.returncode == 1
     assert "sudo apt install python3-gi gir1.2-gtk-4.0 gir1.2-adw-1" in r.stderr
+
+
+# Métodos que existem no GTK 3 mas não no GTK 4. Como aqui não há GTK pra
+# importar, esta lista pega os enganos mais comuns antes de chegar na tela.
+GTK3_ONLY = [
+    "set_hscrollbar_policy",
+    "set_vscrollbar_policy",
+    "set_shadow_type",
+    "get_style_context",
+    "show_all",
+    "set_border_width",
+    "set_relief",
+    "reorder_child",
+]
+
+
+def test_no_gtk3_only_methods():
+    found = []
+    for name in WIDGET_FILES:
+        text = (GUI / name).read_text()
+        for number, line in enumerate(text.splitlines(), 1):
+            for bad in GTK3_ONLY:
+                if bad in line:
+                    found.append(f"{name}:{number} usa {bad}")
+    assert not found, "método que não existe no GTK 4: " + "; ".join(found)

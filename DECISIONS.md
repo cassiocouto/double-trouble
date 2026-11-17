@@ -581,3 +581,10 @@ O `CaptureVM` (puro, testado) junta o texto de cada recorte num bloco, separado
 por linha em branco, e dá pra editar à mão. "Liberar" devolve o bloco inteiro
 (copia e oferece salvar) e começa um novo, vazio. É o ciclo que você descreveu:
 vários recortes, um release, repete.
+
+**D90. Corrige o zoom da imagem e um teste contra métodos do GTK 3.**
+O `--checar` pegou `set_hscrollbar_policy` (não existe no GTK 4; o certo é
+`set_policy`) no zoom da imagem, antes de aparecer na tela real. Além de
+corrigir, adicionei um teste que procura nomes de métodos só do GTK 3
+(`set_hscrollbar_policy`, `show_all`, `get_style_context`...) nos arquivos de
+tela, pra pegar essa classe de erro sem precisar de GTK instalado.
