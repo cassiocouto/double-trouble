@@ -324,16 +324,16 @@ class ImageView:
 
     def _apply_zoom(self) -> None:
         if self.full_size:
-            # 100%: a imagem pede o tamanho real e a área rola.
+            # 100%: a imagem pede o tamanho real e a área rola nos dois sentidos.
             self.picture.set_can_shrink(False)
             self.picture.set_halign(Gtk.Align.START)
             self.picture.set_valign(Gtk.Align.START)
-            self.scroller.set_hscrollbar_policy(Gtk.PolicyType.AUTOMATIC)
+            self.scroller.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
         else:
             self.picture.set_can_shrink(True)
             self.picture.set_halign(Gtk.Align.FILL)
             self.picture.set_valign(Gtk.Align.FILL)
-            self.scroller.set_hscrollbar_policy(Gtk.PolicyType.NEVER)
+            self.scroller.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
         self.note.set_label(f"{self.width}x{self.height} · {len(self.data) // 1024} KiB")
 
     def _save(self, *_):
