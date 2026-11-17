@@ -7,7 +7,7 @@ import re
 from pathlib import Path
 
 GUI = Path(__file__).resolve().parents[2] / "src" / "relay" / "gui"
-WIDGET_FILES = ("app.py", "window.py", "pages.py", "dialogs.py", "widgets.py")
+WIDGET_FILES = ("app.py", "window.py", "pages.py", "dialogs.py", "widgets.py", "selfcheck.py")
 
 # Tudo que existe na libadwaita 1.5 (Ubuntu 24.04) e que a interface pode usar.
 # Adw.Spinner, Adw.ButtonRow, Adw.WrapBox, Adw.ToggleGroup etc. são de versões

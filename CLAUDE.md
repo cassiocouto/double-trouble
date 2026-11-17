@@ -32,7 +32,8 @@ Leia o `README.md`, o `docs/SEGURANCA.md` (as 11 regras de segurança) e o
   português do Brasil, com acento.
 - Em tempo de execução, só a biblioteca padrão e o PyGObject do apt.
 - A lógica da interface (`src/relay/gui/` fora de `app.py`, `window.py`,
-  `pages.py`, `dialogs.py`, `widgets.py`) não importa `gi`. Um teste confere.
+  `pages.py`, `dialogs.py`, `widgets.py`, `selfcheck.py`) não importa `gi`.
+  Um teste confere. Mexeu na tela? Rode `relay-gui --checar` numa máquina com GTK.
 - Toda decisão importante vai pro `DECISIONS.md`, com duas ou três linhas de
   porquê.
 - Mudou uma regra de segurança? Precisa de um teste que tenta quebrar ela.

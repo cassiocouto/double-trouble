@@ -31,10 +31,20 @@ def main(argv: list[str] | None = None) -> int:
     from .. import APP_ID
     from .window import MainWindow, build_about
 
+    args = list(sys.argv if argv is None else argv)
+    checking = "--checar" in args
+    if checking:
+        args.remove("--checar")
+
     class RelayApp(Adw.Application):
         def __init__(self):
-            super().__init__(application_id=APP_ID, flags=Gio.ApplicationFlags.DEFAULT_FLAGS)
+            if checking:
+                # App id separado e sem instância única: não conversa com uma janela já aberta.
+                super().__init__(application_id=APP_ID + ".Checar", flags=Gio.ApplicationFlags.NON_UNIQUE)
+            else:
+                super().__init__(application_id=APP_ID, flags=Gio.ApplicationFlags.DEFAULT_FLAGS)
             self.window: MainWindow | None = None
+            self.exit_code = 0
 
         def do_startup(self):
             Adw.Application.do_startup(self)
@@ -53,12 +63,34 @@ def main(argv: list[str] | None = None) -> int:
             self.set_accels_for_action("app.historico", ["<Control>h"])
 
         def do_activate(self):
+            if checking:
+                self._self_check()
+                return
             if self.window is None:
                 self.window = MainWindow(self)
             self.window.present()
 
+        def _self_check(self):
+            import traceback
+
+            from . import selfcheck
+
+            self.hold()
+            try:
+                self.window = MainWindow(self)
+            except Exception:
+                selfcheck.report([("janela principal", traceback.format_exc())])
+                self.exit_code = 1
+            else:
+                self.exit_code = selfcheck.report(selfcheck.run_checks(self.window))
+                self.window.close()
+            finally:
+                self.release()
+                self.quit()
+
     app = RelayApp()
-    return app.run(sys.argv if argv is None else argv)
+    code = app.run(args)
+    return code or app.exit_code
 
 
 if __name__ == "__main__":

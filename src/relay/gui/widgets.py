@@ -73,7 +73,7 @@ def scrolled(child: Gtk.Widget, max_width: int = 720) -> Gtk.ScrolledWindow:
     clamp.set_child(child)
     sw = Gtk.ScrolledWindow()
     sw.set_vexpand(True)
-    sw.set_hscrollbar_policy(Gtk.PolicyType.NEVER)
+    sw.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
     sw.set_child(clamp)
     return sw
 

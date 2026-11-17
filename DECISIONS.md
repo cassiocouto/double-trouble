@@ -463,3 +463,12 @@ achar o nome).
 Quem é esta máquina, com quem ela está pareada, em que direção, se a outra está
 online (um ping rápido) e os comandos mais usados. É o primeiro comando a
 rodar quando algo parece estranho.
+
+**D75. `relay-gui --checar`.**
+A primeira vez que a interface abriu de verdade (na HP) ela quebrou num método
+que não existe no GTK 4 (`set_hscrollbar_policy`, o certo é `set_policy`).
+Como eu não consigo abrir janela na máquina de nuvem, criei um modo que monta
+todas as telas com dados de exemplo, passa por todos os estados (carregando,
+erro, rodando, terminou, cancelado...) e lista tudo que quebrou de uma vez,
+sem mostrar janela, sem abrir pareamento e sem mexer na área de transferência.
+Ele usa um app id separado, pra não se misturar com uma janela já aberta.
