@@ -77,7 +77,7 @@ mac = hex(HMAC-SHA256(K, rotulo + canonico(mensagem sem "mac")))
 ```json
 {
   "v": 2,
-  "de": "cass-dell-brasil",
+  "de": "cass-hp-elitedesk-800-g6",
   "para": "cass-dell-g15-5511",
   "ts": 1763246400,
   "nonce": "32 caracteres hex",

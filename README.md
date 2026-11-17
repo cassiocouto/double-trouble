@@ -6,17 +6,37 @@ Uma máquina roda comandos pré-aprovados na outra, pelo Tailscale.
 - **Controlador**: o lado que manda. É a interface (o app **Relay**) ou a
   linha de comando (`relay`).
 
-A mesma máquina pode ter os dois. Feito pra `cass-dell-brasil` e
-`cass-dell-g15-5511`, mas funciona com qualquer número de máquinas.
+A mesma máquina pode ter os dois. Funciona com qualquer número de máquinas.
 
 O agente só roda arquivos que **você** colocou em `~/.config/relay/comandos/`.
 Não existe campo de comando livre, nem shell.
+
+## As suas duas máquinas
+
+| Máquina | Papel agora | Faz o quê |
+|---|---|---|
+| `cass-hp-elitedesk-800-g6` | **thinker** | Pensa e manda comandos pro gêmeo |
+| `cass-dell-g15-5511` | **gêmeo** | Executa o que o thinker manda e manda informação pro thinker |
+
+Os papéis podem trocar. Por isso as duas máquinas recebem o Relay inteiro
+(agente e interface) e ficam pareadas **nas duas direções**. Trocar de papel
+não pede nenhuma mudança: é só usar a outra máquina pra mandar.
+
+Como o gêmeo manda informação pro thinker?
+
+- Quando o thinker roda um comando no gêmeo, a saída volta ao vivo pro
+  thinker. Essa é a forma mais comum.
+- O gêmeo também pode tomar a iniciativa e rodar um comando no thinker, por
+  exemplo `relay rodar hp notificar "terminei o backup"`.
+
+O nome pode ser só um pedaço. `hp` acha a `cass-hp-elitedesk-800-g6`, e `g15`
+acha a `cass-dell-g15-5511`.
 
 ---
 
 ## Instalar
 
-Faça isto **nas duas máquinas**.
+Faça os passos 1 a 3 **nas duas máquinas**.
 
 **1. Pacotes do sistema.** Só uma vez:
 
@@ -29,7 +49,7 @@ O instalador confere isso e mostra a linha certa se faltar algo.
 **2. Baixe o projeto e rode o instalador.** Sem sudo:
 
 ```bash
-git clone https://github.com/cassiocouto/double-trouble.git ~/src/relay
+git clone -b main https://github.com/cassiocouto/double-trouble.git ~/src/relay
 ```
 
 ```bash
@@ -43,6 +63,17 @@ pergunta antes (veja "Vindo do ponte.py v1").
 
 Opções: `--agente` (só o lado que executa), `--gui` (só a interface).
 
+**Na G15, se ela tinha o `ponte.py` antigo:** a migração traz junto a
+`cass-dell-brasil`, que não faz mais parte do par. Tire ela depois de migrar:
+
+```bash
+relay agente revogar cass-dell-brasil
+```
+
+```bash
+relay maquina remover cass-dell-brasil
+```
+
 **3. Firewall.** Se o `ufw` estiver ligado, o instalador mostra estas duas
 linhas. Elas liberam o relay só na interface do Tailscale:
 
@@ -54,9 +85,9 @@ sudo ufw allow in on tailscale0 to any port 47800 proto tcp comment 'relay'
 sudo ufw allow in on tailscale0 to any port 47801 proto tcp comment 'relay pareamento'
 ```
 
-**4. Parear.** Uma vez pra cada direção. Exemplo: a brasil manda na G15.
+**4. Parear o thinker com o gêmeo** (a HP manda na G15).
 
-Na **G15** (a que vai executar):
+Na **G15**:
 
 ```bash
 relay parear
@@ -64,24 +95,57 @@ relay parear
 
 Ela mostra um código de 8 números, válido por 2 minutos.
 
-Na **brasil** (a que vai mandar):
+Na **HP**:
 
 ```bash
 relay parear --com cass-dell-g15-5511
 ```
 
 Digite o código quando ele pedir (o código nunca vai na linha de comando).
-Pronto. Teste:
+Teste na HP:
 
 ```bash
 relay ping g15
 ```
 
-Pra G15 mandar na brasil também, faça o mesmo trocando os papéis.
+**5. Parear na outra direção** (a G15 manda na HP). Igual, trocando as
+máquinas.
 
-Pela interface é igual: **Configurações → Esta máquina → Deixar outra
-controlar** mostra o código, e **Configurações → Máquinas → Parear com
-código** recebe ele.
+Na **HP**:
+
+```bash
+relay parear
+```
+
+Na **G15**:
+
+```bash
+relay parear --com cass-hp-elitedesk-800-g6
+```
+
+Teste na G15:
+
+```bash
+relay ping hp
+```
+
+Pronto. As duas mandam e as duas executam.
+
+**6. Opcional: limitar o que cada uma pode rodar na outra.** Por padrão uma
+máquina pareada pode rodar todos os comandos da outra. Pra deixar a G15 rodar
+só `notificar` e `status` na HP, rode na **HP**:
+
+```bash
+relay agente permissoes cass-dell-g15-5511 notificar status
+```
+
+Pra voltar a liberar tudo, use `*` no lugar da lista. Sem lista, ele só mostra
+o que está liberado. Na interface: **Configurações → Esta máquina**, no botão
+de engrenagem do lado da máquina.
+
+Pela interface o pareamento é igual: **Configurações → Esta máquina →
+Deixar outra controlar** mostra o código, e **Configurações → Máquinas →
+Parear com código** recebe ele.
 
 ---
 
@@ -101,7 +165,7 @@ Se um job demorar mais de 10 s e a janela não estiver em foco, chega uma
 notificação quando ele acabar.
 
 **Pela linha de comando.** O nome da máquina pode ser só um pedaço (`g15`,
-`brasil`).
+`hp`).
 
 ```bash
 relay ping g15
