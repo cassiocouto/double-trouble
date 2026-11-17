@@ -1,22 +1,25 @@
 """Pareamento por código curto (ver docs/SEGURANCA.md, seção Pareamento).
 
-Na máquina que vai EXECUTAR (o agente, B):
-    relay parear              abre uma janela de 2 minutos e mostra um código de 8 dígitos
+Numa máquina (B):
+    relay parear          abre uma janela de 2 minutos e mostra um código de 8 dígitos
 
-Na máquina que vai MANDAR (o controlador, A):
-    relay parear --com g15    pede o código e termina o pareamento
+Na outra (A):
+    relay parear g15      pede o código e termina o pareamento
+
+Um pareamento só libera as DUAS direções: A manda em B e B manda em A. Cada
+direção ganha o seu próprio segredo.
 
 Conversa, na porta de pareamento (padrão 47801), com frames do protocolo v2:
 
-    A -> B   linha mágica RELAY-PAR/1
-    B -> A   linha mágica RELAY-PAR/1
+    A -> B   linha mágica RELAY-PAR/2
+    B -> A   linha mágica RELAY-PAR/2
     A -> B   {"tipo": "ola", "de": A, "X": ...}
     B -> A   {"tipo": "ola", "de": B, "Y": ..., "confirmacao": cB}
-    A -> B   {"tipo": "confirmacao", "confirmacao": cA}
-    B -> A   {"tipo": "pronto", "porta": 47800, "mac": ...}
+    A -> B   {"tipo": "confirmacao", "confirmacao": cA, "porta": 47800, "mac": ...}
+    B -> A   {"tipo": "pronto", "de": B, "porta": 47800, "mac": ...}
 
-Resultado: um segredo novo de 32 bytes, igual dos dois lados, que nunca
-passou pela rede. Ele vale só pra direção A -> B.
+Resultado: dois segredos novos de 32 bytes (A -> B e B -> A), iguais dos dois
+lados, que nunca passaram pela rede.
 """
 
 from __future__ import annotations
@@ -32,11 +35,12 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from . import config as config_mod
-from . import protocol, spake2
+from . import protocol, spake2, tailscale
 from .errors import AuthError, ConnectionFailed, ProtocolError, RelayError
 from .tailscale import WhoisChecker
 
-MAGIC = b"RELAY-PAR/1\n"
+MAGIC = b"RELAY-PAR/2\n"
+MAGIC_PREFIX = b"RELAY-PAR/"
 WINDOW_SECONDS = 120
 MAX_FAILURES = 3
 CODE_DIGITS = 8
@@ -77,8 +81,12 @@ def _read_magic(sock: socket.socket, deadline: float | None = None) -> bytes:
 
 @dataclass
 class PairingResult:
-    controller: str
-    secret: bytes
+    """O que a máquina que mostrou o código (B) aprende sobre a outra (A)."""
+
+    controller: str  # nome de A
+    secret: bytes  # segredo de A -> B (A manda aqui)
+    reverse_secret: bytes  # segredo de B -> A (daqui manda em A)
+    peer_port: int  # porta do agente de A
     peer_ip: str
 
 
@@ -181,7 +189,10 @@ class PairingWindow:
         deadline = time.monotonic() + CONN_TIMEOUT
         conn.settimeout(CONN_TIMEOUT)
         try:
-            if _read_magic(conn, deadline) != MAGIC:
+            magic = _read_magic(conn, deadline)
+            if magic != MAGIC:
+                if magic.startswith(MAGIC_PREFIX):
+                    conn.sendall(MAGIC)  # a outra ponta vê a nossa versão e explica
                 return None
             conn.sendall(MAGIC)
             hello = protocol.recv_frame(conn, MAX_FRAME, deadline)
@@ -217,28 +228,66 @@ class PairingWindow:
         if proof.get("tipo") != "confirmacao" or not pake.check_peer(proof.get("confirmacao")):
             self._fail(conn, "código errado", ip)
             return None
+        # A prova de A conferiu. Agora a porta do agente de A, autenticada.
+        peer_port = proof.get("porta")
+        body = {k: v for k, v in proof.items() if k != "mac"}
+        mac = proof.get("mac")
+        if (
+            not isinstance(mac, str)
+            or not hmac.compare_digest(mac, _mac(pake.derive("relay/2 porta de A"), body))
+            or not isinstance(peer_port, int)
+            or isinstance(peer_port, bool)
+            or not 0 < peer_port < 65536
+        ):
+            self._fail(conn, "confirmação inválida", ip)
+            return None
         secret = pake.derive(_secret_label(name, self.cfg.name))
+        reverse = pake.derive(_secret_label(self.cfg.name, name))
         done = {"tipo": "pronto", "de": self.cfg.name, "porta": self.cfg.agent.port}
         done["mac"] = _mac(pake.derive("relay/2 pronto"), done)
         with contextlib.suppress(OSError, ProtocolError):
             protocol.send_frame(conn, done)
         self.on_event(f"pareado com {name} ({ip})")
-        return PairingResult(controller=name, secret=secret, peer_ip=ip)
+        return PairingResult(controller=name, secret=secret, reverse_secret=reverse, peer_port=peer_port, peer_ip=ip)
 
 
-def save_controller(result: PairingResult, path=None) -> config_mod.Config:
-    """Grava o controlador novo no config do agente. Re-parear mantém as permissões."""
+def save_both_directions(
+    other: str,
+    address: str,
+    port: int,
+    outgoing: bytes,
+    incoming: bytes,
+    path=None,
+) -> config_mod.Config:
+    """Grava as duas direções: esta manda na outra (outgoing) e a outra manda nesta (incoming).
+
+    Re-parear troca os segredos e mantém as permissões de comandos que já existiam.
+    """
 
     def change(cfg: config_mod.Config) -> None:
-        old = cfg.agent.controllers.get(result.controller)
-        cfg.agent.controllers[result.controller] = config_mod.ControllerEntry(
-            name=result.controller,
-            secret=result.secret,
+        cfg.machines[other] = config_mod.MachineEntry(name=other, address=address, port=port, secret=outgoing)
+        old = cfg.agent.controllers.get(other)
+        cfg.agent.controllers[other] = config_mod.ControllerEntry(
+            name=other,
+            secret=incoming,
             commands=old.commands if old else None,
             tailscale_node=old.tailscale_node if old else None,
         )
 
     return config_mod.update(change, path)
+
+
+def save_result(result: PairingResult, path=None) -> config_mod.Config:
+    """Lado que mostrou o código. O endereço da outra é o nome dela no Tailscale
+    (ou, se não der pra achar, o IP de onde o pareamento veio)."""
+    try:
+        address = tailscale.resolve_peer(result.controller)
+    except RelayError:
+        address = None
+    address = address or result.peer_ip.split("%", 1)[0]
+    return save_both_directions(
+        result.controller, address, result.peer_port, result.reverse_secret, result.secret, path
+    )
 
 
 # ==========================================================================
@@ -247,13 +296,18 @@ def save_controller(result: PairingResult, path=None) -> config_mod.Config:
 
 @dataclass
 class PairedMachine:
+    """O que a máquina que digitou o código (A) aprende sobre a outra (B)."""
+
     name: str
     address: str
     port: int
-    secret: bytes
+    secret: bytes  # A -> B (daqui manda em B)
+    reverse_secret: bytes  # B -> A (B manda aqui)
 
 
-def pair_with(my_name: str, address: str, port: int, code: str, timeout: float = CONN_TIMEOUT) -> PairedMachine:
+def pair_with(
+    my_name: str, address: str, port: int, code: str, my_port: int, timeout: float = CONN_TIMEOUT
+) -> PairedMachine:
     """Faz o lado do controlador. Devolve o segredo novo (ainda não gravado)."""
     code = normalize_code(code)
     try:
@@ -267,16 +321,21 @@ def pair_with(my_name: str, address: str, port: int, code: str, timeout: float =
     with sock:
         sock.settimeout(timeout)
         try:
-            return _pair_conversation(sock, my_name, address, code)
+            return _pair_conversation(sock, my_name, address, code, my_port)
         except TimeoutError:
             raise ConnectionFailed(f"{address} parou de responder no meio do pareamento") from None
         except OSError as e:
             raise ConnectionFailed(f"a conexão com {address} caiu ({e})") from None
 
 
-def _pair_conversation(sock: socket.socket, my_name: str, address: str, code: str) -> PairedMachine:
+def _pair_conversation(sock: socket.socket, my_name: str, address: str, code: str, my_port: int) -> PairedMachine:
     sock.sendall(MAGIC)
-    if _read_magic(sock) != MAGIC:
+    answer = _read_magic(sock)
+    if answer != MAGIC:
+        if answer.startswith(MAGIC_PREFIX):
+            raise ProtocolError(
+                f"{address} tem outra versão do relay. Rode git pull e o scripts/install.sh nas duas máquinas"
+            )
         raise ProtocolError(f"{address} não está com uma janela de pareamento do relay aberta")
     # X não depende dos nomes. O nome do agente só entra no fim (no TT), então dá
     # pra mandar o nosso lado antes de saber como o agente se chama.
@@ -296,7 +355,9 @@ def _pair_conversation(sock: socket.socket, my_name: str, address: str, code: st
     if not pake.check_peer(hello.get("confirmacao")):
         # Não manda a nossa confirmação: o outro lado não ganha nada pra testar.
         raise AuthError("código errado (ou a janela de pareamento já fechou). Abra de novo e confira os números")
-    protocol.send_frame(sock, {"tipo": "confirmacao", "confirmacao": pake.my_confirmation()})
+    proof = {"tipo": "confirmacao", "confirmacao": pake.my_confirmation(), "porta": my_port}
+    proof["mac"] = _mac(pake.derive("relay/2 porta de A"), proof)
+    protocol.send_frame(sock, proof)
     done = protocol.recv_frame(sock, MAX_FRAME)
     if done.get("tipo") == "erro":
         raise AuthError(f"a outra máquina recusou ({str(done.get('erro'))[:200]})")
@@ -308,22 +369,24 @@ def _pair_conversation(sock: socket.socket, my_name: str, address: str, code: st
     port = done.get("porta")
     if not isinstance(port, int) or isinstance(port, bool) or not 0 < port < 65536:
         raise ProtocolError("porta inválida na resposta do pareamento")
-    secret = pake.derive(_secret_label(my_name, agent))
-    return PairedMachine(name=agent, address=address, port=port, secret=secret)
+    return PairedMachine(
+        name=agent,
+        address=address,
+        port=port,
+        secret=pake.derive(_secret_label(my_name, agent)),
+        reverse_secret=pake.derive(_secret_label(agent, my_name)),
+    )
 
 
-def save_machine(paired: PairedMachine, path=None) -> config_mod.Config:
-    def change(cfg: config_mod.Config) -> None:
-        cfg.machines[paired.name] = config_mod.MachineEntry(
-            name=paired.name, address=paired.address, port=paired.port, secret=paired.secret
-        )
-
-    return config_mod.update(change, path)
+def save_paired(paired: PairedMachine, path=None) -> config_mod.Config:
+    """Lado que digitou o código."""
+    return save_both_directions(paired.name, paired.address, paired.port, paired.secret, paired.reverse_secret, path)
 
 
-def pair_and_save(address: str, port: int, code: str, path=None) -> PairedMachine:
-    """Atalho pra CLI e interface: pareia e grava no config deste controlador."""
+def pair_and_save(target: str, code: str, port: int | None = None, path=None) -> PairedMachine:
+    """Atalho pra CLI e interface. `target` pode ser só um pedaço do nome (g15, hp)."""
     cfg = config_mod.load(path)
-    paired = pair_with(cfg.name, address, port, code)
-    save_machine(paired, path)
+    address = tailscale.resolve_peer(target) or target
+    paired = pair_with(cfg.name, address, port or config_mod.DEFAULT_PORT + 1, code, cfg.agent.port)
+    save_paired(paired, path)
     return paired

@@ -16,6 +16,8 @@ def isolated_dirs(tmp_path, monkeypatch):
     monkeypatch.setenv("RELAY_DIR", str(base))
     monkeypatch.setenv("RELAY_STATE_DIR", str(tmp_path / "estado"))
     monkeypatch.setenv("RELAY_DATA_DIR", str(tmp_path / "dados"))
+    # Nenhum teste fala com o Tailscale de verdade (quem precisa usa um falso).
+    monkeypatch.setenv("RELAY_TAILSCALE", str(tmp_path / "sem-tailscale"))
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
     # Comandos rodam num processo filho e importam relay.command, como no venv instalado.
     src = str(Path(__file__).resolve().parents[1] / "src")

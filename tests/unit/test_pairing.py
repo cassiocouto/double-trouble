@@ -135,16 +135,22 @@ def open_window(tmp_path, **kw):
 def test_pairing_success_both_sides(tmp_path):
     w, t, box, events, agent_path = open_window(tmp_path)
     ctl_cfg, ctl_path = agent_config(tmp_path, "controle")
-    paired = pairing.pair_with("controle", "127.0.0.1", w.port, pairing.format_code(w.code))
+    paired = pairing.pair_with("controle", "127.0.0.1", w.port, pairing.format_code(w.code), 47998)
     t.join(5)
     result = box["r"]
-    assert result.controller == "controle" and result.secret == paired.secret
+    assert result.controller == "controle" and result.peer_port == 47998
+    assert result.secret == paired.secret and result.reverse_secret == paired.reverse_secret
+    assert paired.secret != paired.reverse_secret, "cada direção tem o seu segredo"
     assert paired.name == "agente" and paired.port == 47999 and len(paired.secret) == 32
-    pairing.save_controller(result, agent_path)
-    pairing.save_machine(paired, ctl_path)
+    pairing.save_result(result, agent_path)
+    pairing.save_paired(paired, ctl_path)
     a = config_mod.load(agent_path)
     c = config_mod.load(ctl_path)
+    # controle -> agente
     assert a.agent.controllers["controle"].secret == c.machines["agente"].secret
+    # agente -> controle (a outra direção, no mesmo pareamento)
+    assert c.agent.controllers["agente"].secret == a.machines["controle"].secret
+    assert a.machines["controle"].port == 47998 and a.machines["controle"].address == "127.0.0.1"
     assert any("pareado com controle" in e for e in events)
 
 
@@ -157,10 +163,12 @@ def test_paired_secret_actually_works(agent, tmp_path):
     box = {}
     t = threading.Thread(target=lambda: box.setdefault("r", w.serve()), daemon=True)
     t.start()
-    paired = pairing.pair_with("novo", "127.0.0.1", w.port, w.code)
+    paired = pairing.pair_with("novo", "127.0.0.1", w.port, w.code, 47998)
     t.join(5)
-    pairing.save_controller(box["r"], h.config_path)
+    pairing.save_result(box["r"], h.config_path)
     assert h.client(name="novo", secret=paired.secret).ping().machine == "agente"
+    back = config_mod.load(h.config_path).machines["novo"]
+    assert back.secret == paired.reverse_secret and back.port == 47998
 
 
 def test_wrong_code_counts_and_closes(tmp_path):
@@ -168,13 +176,13 @@ def test_wrong_code_counts_and_closes(tmp_path):
     wrong = "00000000" if w.code != "00000000" else "11111111"
     for _ in range(3):
         with pytest.raises(AuthError, match="código errado"):
-            pairing.pair_with("controle", "127.0.0.1", w.port, wrong)
+            pairing.pair_with("controle", "127.0.0.1", w.port, wrong, 47998)
     t.join(5)
     assert box["r"] is None
     assert w.failures == 3
     assert any("tentativas erradas" in e for e in events)
     with pytest.raises(ConnectionFailed):
-        pairing.pair_with("controle", "127.0.0.1", w.port, w.code)  # janela já fechou
+        pairing.pair_with("controle", "127.0.0.1", w.port, w.code, 47998)  # janela já fechou
 
 
 def test_window_times_out(tmp_path):
@@ -191,7 +199,7 @@ def test_window_refuses_ip_outside_list(tmp_path):
     t = threading.Thread(target=w.serve, daemon=True)
     t.start()
     with pytest.raises((ProtocolError, ConnectionFailed)):
-        pairing.pair_with("controle", "127.0.0.1", w.port, w.code)
+        pairing.pair_with("controle", "127.0.0.1", w.port, w.code, 47998)
     w.stop()
     t.join(5)
     assert w.failures == 0 and any("fora da lista" in e for e in events)
@@ -212,7 +220,7 @@ def test_window_checks_tailscale_node(tmp_path, monkeypatch):
     t = threading.Thread(target=w.serve, daemon=True)
     t.start()
     with pytest.raises(AuthError, match="intruso"):
-        pairing.pair_with("controle", "127.0.0.1", w.port, w.code)
+        pairing.pair_with("controle", "127.0.0.1", w.port, w.code, 47998)
     w.stop()
     t.join(5)
     assert w.failures == 1
@@ -221,7 +229,7 @@ def test_window_checks_tailscale_node(tmp_path, monkeypatch):
 def test_window_refuses_own_name(tmp_path):
     w, t, box, _, _ = open_window(tmp_path)
     with pytest.raises(AuthError, match="ela mesma"):
-        pairing.pair_with("agente", "127.0.0.1", w.port, w.code)
+        pairing.pair_with("agente", "127.0.0.1", w.port, w.code, 47998)
     w.stop()
     t.join(5)
 
@@ -291,7 +299,7 @@ def test_tampered_final_message_rejected(tmp_path, monkeypatch):
 
     monkeypatch.setattr(pairing.protocol, "send_frame", tamper)
     with pytest.raises(AuthError, match="confirmação final"):
-        pairing.pair_with("controle", "127.0.0.1", w.port, w.code)
+        pairing.pair_with("controle", "127.0.0.1", w.port, w.code, 47998)
     t.join(5)
 
 
@@ -309,7 +317,7 @@ def test_not_a_pairing_port():
 
     threading.Thread(target=serve, daemon=True).start()
     with pytest.raises(ProtocolError, match="janela de pareamento"):
-        pairing.pair_with("controle", "127.0.0.1", srv.getsockname()[1], "12345678")
+        pairing.pair_with("controle", "127.0.0.1", srv.getsockname()[1], "12345678", 47998)
 
 
 def test_repairing_keeps_permissions(tmp_path):
@@ -317,7 +325,7 @@ def test_repairing_keeps_permissions(tmp_path):
     cfg.agent.controllers["controle"] = config_mod.ControllerEntry("controle", os.urandom(32), ["status"])
     config_mod.save(cfg, path)
     new_secret = os.urandom(32)
-    pairing.save_controller(pairing.PairingResult("controle", new_secret, "127.0.0.1"), path)
+    pairing.save_result(pairing.PairingResult("controle", new_secret, os.urandom(32), 47800, "127.0.0.1"), path)
     entry = config_mod.load(path).agent.controllers["controle"]
     assert entry.secret == new_secret and entry.commands == ["status"]
 
@@ -328,8 +336,92 @@ def test_slow_connection_does_not_block_window(tmp_path, monkeypatch):
     slow = socket.create_connection(("127.0.0.1", w.port))
     slow.sendall(pairing.MAGIC[:3])  # para no meio e fica quieto
     t0 = time.monotonic()
-    paired = pairing.pair_with("controle", "127.0.0.1", w.port, w.code, timeout=10)
+    paired = pairing.pair_with("controle", "127.0.0.1", w.port, w.code, 47998, timeout=10)
     assert paired.name == "agente"
     assert time.monotonic() - t0 < 5
     slow.close()
     t.join(5)
+
+
+def test_tampered_port_from_dialer_is_rejected(tmp_path, monkeypatch):
+    """A porta que quem digitou o código manda também é autenticada."""
+    w, t, box, _, _ = open_window(tmp_path)
+    real_send = protocol.send_frame
+
+    def tamper(sock, obj, limit=protocol.MAX_RESPONSE_FRAME):
+        if obj.get("tipo") == "confirmacao":
+            obj = {**obj, "porta": 1}
+        return real_send(sock, obj, limit)
+
+    monkeypatch.setattr(pairing.protocol, "send_frame", tamper)
+    with pytest.raises((ProtocolError, AuthError, ConnectionFailed)):
+        pairing.pair_with("controle", "127.0.0.1", w.port, w.code, 47998)
+    monkeypatch.undo()
+    assert wait_failures(w, 1)
+    w.stop()
+    t.join(5)
+    assert box.get("r") is None
+
+
+def test_old_pairing_version_gets_clear_answer(tmp_path):
+    w, t, box, _, _ = open_window(tmp_path)
+    with socket.create_connection(("127.0.0.1", w.port), timeout=5) as s:
+        s.sendall(b"RELAY-PAR/1\n")
+        assert s.recv(100) == pairing.MAGIC
+    w.stop()
+    t.join(5)
+
+
+def test_dialer_explains_other_version():
+    srv = socket.socket()
+    srv.bind(("127.0.0.1", 0))
+    srv.listen(1)
+
+    def serve():
+        conn, _ = srv.accept()
+        with conn:
+            conn.recv(100)
+            conn.sendall(b"RELAY-PAR/1\n")
+        srv.close()
+
+    threading.Thread(target=serve, daemon=True).start()
+    with pytest.raises(ProtocolError, match="outra versão"):
+        pairing.pair_with("controle", "127.0.0.1", srv.getsockname()[1], "12345678", 47998)
+
+
+# ---------------------------------------------------------------------------
+# nome curto (g15, hp) achado no Tailscale
+
+
+def fake_status(tmp_path, monkeypatch, peers):
+    import json
+
+    status = {
+        "Self": {"DNSName": "cass-hp-elitedesk-800-g6.tail1.ts.net."},
+        "Peer": {f"k{i}": {"DNSName": f"{name}.tail1.ts.net."} for i, name in enumerate(peers)},
+    }
+    script = tmp_path / "tailscale"
+    script.write_text(f"#!/bin/sh\nif [ \"$1\" = status ]; then cat <<'FIM'\n{json.dumps(status)}\nFIM\nfi\n")
+    os.chmod(script, 0o700)
+    monkeypatch.setenv("RELAY_TAILSCALE", str(script))
+
+
+def test_resolve_short_names(tmp_path, monkeypatch):
+    from relay.core import tailscale
+    from relay.core.errors import RelayError
+
+    fake_status(tmp_path, monkeypatch, ["cass-dell-g15-5511", "cass-dell-g16", "celular"])
+    assert tailscale.resolve_peer("g15") == "cass-dell-g15-5511.tail1.ts.net"
+    assert tailscale.resolve_peer("CELULAR") == "celular.tail1.ts.net"
+    assert tailscale.resolve_peer("cass-dell-g15-5511") == "cass-dell-g15-5511.tail1.ts.net"
+    with pytest.raises(RelayError, match="mais de uma"):
+        tailscale.resolve_peer("dell")
+    assert tailscale.resolve_peer("nada") is None
+    assert tailscale.resolve_peer("g15.exemplo.com") is None  # já é um endereço completo
+    assert tailscale.resolve_peer("100.64.0.1") is None
+
+
+def test_resolve_without_tailscale():
+    from relay.core import tailscale
+
+    assert tailscale.resolve_peer("g15") is None  # sem tailscale, usa o que foi digitado

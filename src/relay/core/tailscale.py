@@ -153,3 +153,47 @@ class WhoisChecker:
         wanted = f"{expected.lower()}.{suffix}"
         if fqdn != wanted:
             raise AuthError(f"o IP {ip} é do nó '{fqdn}', não de '{wanted}'")
+
+
+def peers() -> list[tuple[str, str]]:
+    """(nome curto, nome completo) de cada outra máquina do tailnet, do `tailscale status --json`."""
+    out = _run(["status", "--json"])
+    if not out:
+        return []
+    try:
+        data = json.loads(out)
+    except ValueError:
+        return []
+    found = []
+    peer_map = data.get("Peer") if isinstance(data, dict) else None
+    for peer in (peer_map or {}).values() if isinstance(peer_map, dict) else []:
+        dns = peer.get("DNSName") if isinstance(peer, dict) else None
+        if isinstance(dns, str) and dns.strip("."):
+            fqdn = dns.rstrip(".").lower()
+            found.append((fqdn.split(".", 1)[0], fqdn))
+    return found
+
+
+def resolve_peer(query: str) -> str | None:
+    """Acha a máquina do tailnet pelo nome ou por um pedaço dele (g15, hp).
+
+    Devolve o nome completo do MagicDNS, ou None se não der pra saber (sem
+    tailscale, nenhuma bate, ou já é um endereço completo ou um IP). Se mais
+    de uma bater, levanta erro com as opções.
+    """
+    from .errors import RelayError
+
+    q = query.strip().lower().rstrip(".")
+    if not q or "." in q or ":" in q:
+        return None
+    candidates = peers()
+    exact = [fqdn for short, fqdn in candidates if short == q]
+    if exact:
+        return exact[0]
+    hits = sorted({(short, fqdn) for short, fqdn in candidates if q in short})
+    if len(hits) == 1:
+        return hits[0][1]
+    if len(hits) > 1:
+        names = ", ".join(short for short, _ in hits)
+        raise RelayError(f"'{query}' bate com mais de uma máquina do Tailscale ({names}). Use mais do nome")
+    return None

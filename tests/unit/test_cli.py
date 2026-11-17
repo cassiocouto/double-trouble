@@ -87,3 +87,26 @@ def test_cli_refuses_secret_on_argv(base, capsys):
         assert e.value.code == 2
         assert "ps" in capsys.readouterr().err
     assert config_mod.load().machines == {}
+
+
+def test_relay_alone_without_config(base, capsys):
+    main([])
+    assert "ainda não foi configurado" in capsys.readouterr().out
+
+
+def test_relay_alone_shows_pairs_and_tips(thinker, capsys):
+    cfg = config_mod.load()
+    cfg.machines[G15] = config_mod.MachineEntry(G15, "127.0.0.1", 1, os.urandom(32))
+    config_mod.save(cfg)
+    main([])
+    out = capsys.readouterr().out
+    assert "Esta máquina: cass-hp-elitedesk-800-g6" in out
+    assert G15 in out and "esta manda nela e ela manda nesta" in out
+    assert "offline" in out  # porta 1: ninguém escutando
+    assert f"relay rodar {G15} status" in out
+
+
+def test_relay_alone_with_no_pairs(base, capsys):
+    config_mod.save(config_mod.default_config("sozinha"))
+    main([])
+    assert "Ainda não está pareada" in capsys.readouterr().out

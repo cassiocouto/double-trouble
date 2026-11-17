@@ -439,3 +439,27 @@ em loop. Agora, igual à espera do Tailscale, ele manda READY depois de 30 s e
 continua tentando. O STATUS explica que outro programa usa a porta e mostra o
 comando pra ver qual (`ss -ltnp | grep 47800`). Quando a porta libera, ele
 escuta sozinho.
+
+## Comandos mais fáceis
+
+**D72. Um pareamento libera as duas direções.**
+Na primeira instalação, o pareamento saiu do lado errado: a G15 ficou mandando
+na HP, e não o contrário. Como os papéis podem trocar, agora um pareamento só
+cria os dois segredos (um pra cada direção) e grava as duas máquinas dos dois
+lados. Não existe mais "lado certo" pra rodar cada comando. A mesma pessoa vê o
+código numa máquina e digita na outra, então ela está nas duas e quer as duas
+juntas. Pra limitar uma direção depois, existe `relay agente permissoes`. A
+versão do pareamento subiu pra `RELAY-PAR/2`, e versões diferentes dão um erro
+claro pedindo pra atualizar as duas.
+
+**D73. Nome curto no pareamento.**
+`relay parear g15` pergunta ao Tailscale (`tailscale status --json`) quais
+máquinas existem e acha a que bate. Se duas baterem, ele pede mais do nome. O
+`--com` antigo ainda funciona, mas sumiu da ajuda. A máquina que mostrou o
+código guarda o nome do Tailscale da outra (ou o IP de onde ela veio, se não
+achar o nome).
+
+**D74. `relay` sozinho mostra um resumo.**
+Quem é esta máquina, com quem ela está pareada, em que direção, se a outra está
+online (um ping rápido) e os comandos mais usados. É o primeiro comando a
+rodar quando algo parece estranho.

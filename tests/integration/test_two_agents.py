@@ -257,6 +257,7 @@ def test_pairing_by_code_between_processes(tmp_path):
             cfg.agent.allowed = ["127.0.0.0/8"]
 
         config_mod.update(loopback, Path(m.env["RELAY_DIR"]) / "relay.json")
+    a.start_agent()
     b.start_agent()
     pair_port = free_port()
     try:
@@ -274,16 +275,21 @@ def test_pairing_by_code_between_processes(tmp_path):
                 code = line.split("código:", 1)[1].strip()
                 break
         assert code and len(code.replace(" ", "")) == 8
-        r = a.relay("parear", "--com", "127.0.0.1", "--porta", str(pair_port), stdin=code + "\n")
-        assert "agora manda comandos pra maquina-b" in r.stdout
+        r = a.relay("parear", "127.0.0.1", "--porta", str(pair_port), stdin=code + "\n")
+        assert "agora mandam uma na outra" in r.stdout
         out, err = window.communicate(timeout=10)
         assert window.returncode == 0, out + err
-        assert "maquina-a pode mandar comandos" in out
+        assert "maquina-a e esta máquina agora mandam uma na outra" in out
         # Ainda falta a porta certa do agente no lado A? Não: ela veio no pareamento.
         assert "maquina-b respondeu" in a.relay("ping", "maquina-b").stdout
-        # E a direção contrária continua fechada até parear de novo no outro sentido.
-        assert "não controla nenhuma" in b.relay("maquinas").stdout
+        # O mesmo pareamento já abriu a outra direção.
+        assert "maquina-a respondeu" in b.relay("ping", "maquina-a").stdout
+        # E o resumo mostra as duas direções e que a outra está online.
+        resumo = a.relay().stdout
+        assert "Esta máquina: maquina-a" in resumo
+        assert "esta manda nela e ela manda nesta" in resumo and "online" in resumo
     finally:
+        a.stop_agent()
         b.stop_agent()
 
 
@@ -324,7 +330,7 @@ def test_pairing_wrong_code_from_cli(tmp_path):
             break
     wrong = "00000000" if code != "00000000" else "11111111"
     for _ in range(3):
-        r = a.relay("parear", "--com", "127.0.0.1", "--porta", str(pair_port), stdin=wrong + "\n", check=False)
+        r = a.relay("parear", "127.0.0.1", "--porta", str(pair_port), stdin=wrong + "\n", check=False)
         assert r.returncode == 4 and "código errado" in r.stderr
     out, _ = window.communicate(timeout=10)
     assert window.returncode == 1

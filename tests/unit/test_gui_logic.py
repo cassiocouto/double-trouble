@@ -509,6 +509,8 @@ def test_pairing_view_models(tmp_path):
     a = config_mod.load(agent_path)
     c = config_mod.load(ctl_path)
     assert a.agent.controllers["controle"].secret == c.machines["agente"].secret
+    assert c.agent.controllers["agente"].secret == a.machines["controle"].secret  # as duas direções
+    assert "mandam uma na outra" in agent_vm.message
     service.shutdown()
 
 

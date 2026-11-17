@@ -205,6 +205,6 @@ if [[ ${#notes[@]} -gt 0 ]]; then
   say ""
 fi
 say "Próximos passos"
-say "  1. Na máquina que vai EXECUTAR:   relay parear"
-say "  2. Na máquina que vai MANDAR:     relay parear --com <nome-da-outra>"
-say "  3. Teste:                         relay ping <nome-da-outra>"
+say "  1. Numa máquina:     relay parear              (mostra um código)"
+say "  2. Na outra:         relay parear <nome>       (digita o código; pode ser só um pedaço do nome)"
+say "  3. Nas duas:         relay                     (mostra com quem está pareada)"

@@ -122,11 +122,20 @@ Testes: `test_inv11_*`, `test_review_*`.
 
 ## Pareamento
 
-**Fluxo.** Na máquina que vai executar (o agente), `relay parear` (ou
-"Deixar outra controlar" na interface) abre uma janela de **2 minutos** na
-porta 47801 e mostra um código de **8 números**. Na máquina que vai mandar,
-você digita esse código. As duas saem com um segredo novo de 32 bytes, igual
-dos dois lados, só pra essa direção.
+**Fluxo.** Numa máquina, `relay parear` (ou "Mostrar código" na interface)
+abre uma janela de **2 minutos** na porta 47801 e mostra um código de **8
+números**. Na outra, `relay parear <nome>` (ou "Digitar código") pede esse
+código. As duas saem com **dois** segredos novos de 32 bytes, um pra cada
+direção, iguais dos dois lados. Os dois nunca passam pela rede.
+
+**Por que um pareamento libera as duas direções.** Pra parear, a mesma pessoa
+precisa estar nas duas máquinas: numa ela vê o código, na outra ela digita.
+Isso já mostra que ela quer as duas máquinas juntas. Como os papéis podem
+trocar, liberar as duas direções de uma vez evita o erro de parear do lado
+errado. Cada direção continua com o seu segredo, e dá pra limitar ou tirar
+uma direção depois (`relay agente permissoes` ou `relay agente revogar`).
+A porta do agente que cada lado manda pro outro vai autenticada com a chave
+do pareamento.
 
 **Por que dá pra usar um código curto.** O código não é usado como senha
 direto. As duas pontas rodam **SPAKE2**, um protocolo de troca de chave com

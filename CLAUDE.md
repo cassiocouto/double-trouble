@@ -8,8 +8,9 @@ Leia o `README.md`, o `docs/SEGURANCA.md` (as 11 regras de segurança) e o
 
 - `cass-hp-elitedesk-800-g6` é o **thinker**: pensa e manda comandos pro gêmeo.
 - `cass-dell-g15-5511` é o **gêmeo**: executa e manda informação pro thinker.
-- Os papéis podem trocar. As duas têm agente e interface e ficam pareadas nas
-  duas direções. Nada no código pode assumir que só uma delas manda.
+- Os papéis podem trocar. As duas têm agente e interface. Um pareamento só
+  (`relay parear` numa, `relay parear <nome>` na outra) libera as duas
+  direções. Nada no código pode assumir que só uma delas manda.
 - A `cass-dell-brasil` saiu do par.
 
 ## Git
