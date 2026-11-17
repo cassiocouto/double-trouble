@@ -20,7 +20,7 @@ gi.require_version("Adw", "1")
 from gi.repository import Adw, Gdk, Gio, GObject  # noqa: E402
 
 from .history import Entry  # noqa: E402
-from .pages import CommandsPage, HistoryEntryPage, HistoryPage, RunPage  # noqa: E402
+from .pages import CapturePage, CommandsPage, HistoryEntryPage, HistoryPage, RunPage  # noqa: E402
 from .viewmodels import CommandsVM, PairAgentVM, PairControllerVM, RunVM  # noqa: E402
 
 # PNG 1x1 de verdade, pra o Gdk.Texture conseguir carregar na checagem.
@@ -119,6 +119,19 @@ def run_checks(win) -> list[tuple[str, str | None]]:
 
         return check
 
+    def capture() -> None:
+        win.make_extractor = lambda: lambda img, mode, q: "texto de teste"
+        page = CapturePage(win, "maquina-de-teste")
+        page.crop.set_image(SAMPLE_PNG)
+        page.crop._start, page.crop._cur = (1.0, 1.0), (40.0, 30.0)
+        page.crop.crop_png()  # recorte (ou imagem inteira, se pequeno demais)
+        page.mode.set_selected(1)
+        page._mode_changed()
+        page.vm._append("texto de exemplo <com> & símbolos")
+        page.vm._append("segundo recorte")
+        page._refresh()
+        assert page.vm.snippets == 2
+
     def confirm_dialog() -> None:
         d = Adw.AlertDialog.new("Rodar “tudo” em maquina-de-teste?", "Este comando pede confirmação.")
         d.add_response("nao", "Não rodar")
@@ -187,6 +200,7 @@ def run_checks(win) -> list[tuple[str, str | None]]:
     step("tela de comandos", commands)
     for cmd in SAMPLE_COMMANDS:
         step(f"tela de executar ({cmd['nome']})", run_page(cmd))
+    step("ler tela (OCR)", capture)
     step("diálogo de confirmação", confirm_dialog)
     step("histórico", history)
     step("configurações", preferences)

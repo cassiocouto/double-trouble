@@ -562,3 +562,71 @@ def test_run_saves_artifact_to_file(ctx, tmp_path):
     dest = tmp_path / "saida.png"
     run.save_artifact(dest)
     assert dest.read_bytes() == run.artifact
+
+
+# --------------------------------------------------------------------------
+# captura de texto (OCR): acumula vários recortes num bloco
+
+
+def test_capture_accumulates_and_releases(ctx):
+    from relay.gui.viewmodels import CaptureVM
+
+    _, loop, service, _ = ctx
+    calls = []
+
+    def extractor(image, mode, question):
+        calls.append((image, mode, question))
+        return f"texto de {image.decode()}"
+
+    vm = CaptureVM(service, extractor)
+    blocks = []
+    vm.block_changed.connect(blocks.append)
+
+    vm.add_crop(b"a", "ocr", None)
+    loop.pump(lambda: not vm.busy)
+    vm.add_crop(b"b", "ocr", None)
+    loop.pump(lambda: not vm.busy)
+    assert vm.block == "texto de a\n\ntexto de b"
+    assert vm.snippets == 2
+    assert blocks[-1] == vm.block
+
+    released = vm.release()
+    assert released == "texto de a\n\ntexto de b"
+    assert vm.block == "" and vm.snippets == 0 and not vm.has_text
+
+
+def test_capture_question_mode_passes_question(ctx):
+    from relay.gui.viewmodels import CaptureVM
+
+    _, loop, service, _ = ctx
+    seen = {}
+    vm = CaptureVM(service, lambda img, mode, q: seen.update(mode=mode, q=q) or "r")
+    vm.add_crop(b"x", "pergunta", "Quanto custa?")
+    loop.pump(lambda: not vm.busy)
+    assert seen == {"mode": "pergunta", "q": "Quanto custa?"}
+
+
+def test_capture_shows_error_and_stays(ctx):
+    from relay.core.errors import RelayError
+    from relay.gui.viewmodels import CaptureVM
+
+    _, loop, service, _ = ctx
+
+    def boom(image, mode, question):
+        raise RelayError("a chave da API foi recusada")
+
+    vm = CaptureVM(service, boom)
+    vm.block = "já tinha texto"
+    vm.add_crop(b"x", "ocr", None)
+    loop.pump(lambda: not vm.busy)
+    assert "recusada" in vm.error
+    assert vm.block == "já tinha texto"  # o que já existia não some num erro
+
+
+def test_capture_edit_block_by_hand(ctx):
+    from relay.gui.viewmodels import CaptureVM
+
+    _, _, service, _ = ctx
+    vm = CaptureVM(service, lambda *a: "")
+    vm.set_block("texto editado à mão")
+    assert vm.block == "texto editado à mão" and vm.has_text
