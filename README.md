@@ -168,6 +168,24 @@ para.
 Outros comandos úteis: `relay maquinas`, `relay comandos`, `relay config`,
 `relay agente revogar <nome>`. Veja todos com `relay --help`.
 
+### Ler o texto da tela (OCR)
+
+Dá pra tirar um print da outra máquina, recortar um pedaço e deixar o Claude
+ler o texto, na interface. Serve pra juntar o texto de várias telas aos poucos.
+
+1. Uma vez, ponha sua chave da API do Claude em **Configurações → Claude (OCR)**.
+   Ela fica só nesta máquina, num arquivo com permissão restrita.
+2. Abra a máquina, clique no ícone de print no topo (**Ler o texto da tela**).
+3. **Tirar print**, arraste um retângulo sobre o texto, **Extrair recorte**. O
+   texto aparece no bloco embaixo.
+4. Repita quantas vezes quiser. Cada recorte é concatenado no mesmo bloco.
+5. **Liberar** copia o bloco e deixa você salvar num arquivo, e começa um bloco
+   novo.
+
+Em vez de "Ler o texto", dá pra escolher **Perguntar ao Claude** e digitar uma
+pergunta sobre o recorte. O modelo padrão é o `claude-opus-5-5`; dá pra trocar
+por um mais barato nas Configurações. Cada leitura é uma chamada paga à API.
+
 ---
 
 ## Criar um comando novo

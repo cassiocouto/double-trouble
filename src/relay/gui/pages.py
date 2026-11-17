@@ -15,9 +15,10 @@ from gi.repository import Adw, GLib, GObject, Gtk  # noqa: E402
 
 from . import text  # noqa: E402
 from .history import Entry  # noqa: E402
-from .viewmodels import CommandsVM, HistoryVM, MachinesVM, RunVM  # noqa: E402
+from .viewmodels import CaptureVM, CommandsVM, HistoryVM, MachinesVM, RunVM  # noqa: E402
 from .widgets import (  # noqa: E402
     DEFAULT_ICON,
+    CropView,
     FormView,
     ImageView,
     OutputView,
@@ -148,6 +149,8 @@ class CommandsPage:
         search_btn.set_tooltip_text("Buscar")
         reload_btn = button("", "flat", icon="view-refresh-symbolic", tooltip="Recarregar a lista")
         reload_btn.connect("clicked", lambda *_: self.vm.load())
+        capture_btn = button("", "flat", icon="applets-screenshooter-symbolic", tooltip="Ler o texto da tela (OCR)")
+        capture_btn.connect("clicked", lambda *_: self.win.show_capture(self.vm.machine))
 
         self.search = Gtk.SearchEntry()
         self.search.set_placeholder_text("Buscar por nome, descrição ou categoria")
@@ -189,7 +192,7 @@ class CommandsPage:
         content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         content.append(self.bar)
         content.append(self.stack)
-        self.page = page(vm.machine, content, header_end=[search_btn, reload_btn])
+        self.page = page(vm.machine, content, header_end=[search_btn, capture_btn, reload_btn])
         self.bar.set_key_capture_widget(self.page)
         vm.changed.connect(self.rebuild)
 
@@ -451,3 +454,158 @@ class HistoryEntryPage:
     def _copy(self, *_):
         copy_to_clipboard(self.page, self.entry.stdout + self.entry.stderr)
         self.win.toast("Saída copiada")
+
+
+class CapturePage:
+    """Ler a tela: tira um print, recorta um pedaço, extrai o texto e junta num bloco.
+
+    Repete quantas vezes quiser; depois "Liberar" copia/salva o bloco e começa
+    outro. O texto é extraído pela API do Claude (a chave fica nas Configurações).
+    """
+
+    def __init__(self, win: MainWindow, machine: str):
+        self.win = win
+        self.machine = machine
+        self.vm = CaptureVM(win.service, win.make_extractor())
+        self._syncing = False
+
+        box = vbox()
+        box.append(label(f"Tira um print de {machine}, recorta um pedaço e extrai o texto.", "dim-label"))
+
+        group = Adw.PreferencesGroup()
+        self.mode = Adw.ComboRow()
+        self.mode.set_use_markup(False)
+        self.mode.set_title("O que fazer com o recorte")
+        self.mode.set_model(Gtk.StringList.new(["Ler o texto", "Perguntar ao Claude"]))
+        self.mode.connect("notify::selected", lambda *_: self._mode_changed())
+        self.question = Adw.EntryRow()
+        self.question.set_use_markup(False)
+        self.question.set_title("Pergunta sobre o recorte")
+        self.question.set_visible(False)
+        group.add(self.mode)
+        group.add(self.question)
+        box.append(group)
+
+        top = Gtk.Box(spacing=12)
+        top.set_halign(Gtk.Align.CENTER)
+        self.shot_btn = button("Tirar print", "pill", "suggested-action")
+        self.shot_btn.connect("clicked", lambda *_: self._take_shot())
+        self.extract_btn = button("Extrair recorte", "pill")
+        self.extract_btn.connect("clicked", lambda *_: self._extract())
+        self.extract_btn.set_sensitive(False)
+        top.append(self.shot_btn)
+        top.append(self.extract_btn)
+        box.append(top)
+
+        self.status = label("", "dim-label", "caption")
+        box.append(self.status)
+
+        self.crop = CropView()
+        box.append(self.crop.widget)
+
+        box.append(label("Texto juntado", "heading"))
+        self.textview = Gtk.TextView()
+        self.textview.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
+        self.textview.set_size_request(-1, 160)
+        for side in ("top", "bottom", "left", "right"):
+            getattr(self.textview, f"set_{side}_margin")(8)
+        self.buffer = self.textview.get_buffer()
+        self.buffer.connect("changed", self._text_edited)
+        frame = Gtk.Frame()
+        frame.set_child(self.textview)
+        box.append(frame)
+
+        actions = Gtk.Box(spacing=12)
+        actions.set_halign(Gtk.Align.CENTER)
+        self.copy_btn = button("Copiar bloco", "flat")
+        self.copy_btn.connect("clicked", self._copy)
+        self.release_btn = button("Liberar (salvar)", "pill", "suggested-action")
+        self.release_btn.connect("clicked", lambda *_: self._release())
+        clear_btn = button("Limpar", "flat")
+        clear_btn.connect("clicked", lambda *_: self.vm.clear())
+        actions.append(self.copy_btn)
+        actions.append(self.release_btn)
+        actions.append(clear_btn)
+        box.append(actions)
+
+        self.page = page(f"Ler tela · {machine}", scrolled(box, max_width=1200))
+        self.vm.changed.connect(self._refresh)
+        self.vm.block_changed.connect(self._block_changed)
+        self._refresh()
+
+    def _mode(self) -> str:
+        return "pergunta" if self.mode.get_selected() == 1 else "ocr"
+
+    def _mode_changed(self) -> None:
+        self.question.set_visible(self._mode() == "pergunta")
+
+    def _take_shot(self) -> None:
+        self.status.set_label("tirando o print…")
+        self.shot_btn.set_sensitive(False)
+
+        def done(outcome) -> None:
+            self.shot_btn.set_sensitive(True)
+            if outcome.artifact is not None:
+                try:
+                    self.crop.set_image(outcome.artifact)
+                except Exception as e:
+                    self.status.set_label(f"não consegui mostrar a imagem ({e})")
+                    return
+                self.extract_btn.set_sensitive(True)
+                self.status.set_label("arraste um retângulo sobre o texto e clique em Extrair recorte")
+            else:
+                r = outcome.result or {}
+                detail = outcome.text_stderr.strip() or r.get("erro") or "o comando não devolveu imagem"
+                self.status.set_label(f"o print falhou: {detail[:200]}")
+
+        def fail(msg: str) -> None:
+            self.shot_btn.set_sensitive(True)
+            self.status.set_label(msg)
+
+        self.win.service.run(self.machine, "screenshot", {"cursor": False}, None, lambda ev: None, done, fail)
+
+    def _extract(self) -> None:
+        if not self.crop.has_image:
+            return
+        try:
+            png = self.crop.crop_png()
+        except Exception as e:
+            self.status.set_label(f"não consegui recortar ({e})")
+            return
+        q = self.question.get_text() if self._mode() == "pergunta" else None
+        self.status.set_label("lendo o recorte com o Claude…")
+        self.vm.add_crop(png, self._mode(), q)
+
+    def _block_changed(self, text: str) -> None:
+        if self._syncing:
+            return
+        self._syncing = True
+        self.buffer.set_text(text)
+        self._syncing = False
+
+    def _text_edited(self, *_):
+        if self._syncing:
+            return
+        self._syncing = True
+        self.vm.set_block(self.buffer.get_text(self.buffer.get_start_iter(), self.buffer.get_end_iter(), False))
+        self._syncing = False
+
+    def _refresh(self) -> None:
+        busy = self.vm.busy
+        self.extract_btn.set_sensitive(self.crop.has_image and not busy)
+        self.copy_btn.set_sensitive(self.vm.has_text)
+        self.release_btn.set_sensitive(self.vm.has_text)
+        if self.vm.error:
+            self.status.set_label(self.vm.error)
+        elif not busy and self.vm.snippets:
+            self.status.set_label(f"{self.vm.snippets} recorte(s) no bloco. Tire outro print ou libere o bloco.")
+
+    def _copy(self, *_):
+        copy_to_clipboard(self.page, self.vm.block)
+        self.win.toast("Bloco copiado")
+
+    def _release(self) -> None:
+        text = self.vm.release()
+        copy_to_clipboard(self.page, text)
+        self.win.save_text(text, suggested_name=f"{self.machine}-texto")
+        self.win.toast("Bloco copiado e começando um novo")

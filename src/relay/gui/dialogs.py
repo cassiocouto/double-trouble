@@ -59,6 +59,8 @@ class PreferencesDialog:
         self.agent_page.add(self.ctrl_group)
         self.dialog.add(self.agent_page)
 
+        self._build_claude_page()
+
         self._rows: list[tuple[Adw.PreferencesGroup, Gtk.Widget]] = []
         vm.changed.connect(self.rebuild)
         self.rebuild()
@@ -68,6 +70,51 @@ class PreferencesDialog:
 
     def toast(self, msg: str) -> None:
         self.dialog.add_toast(toast(msg))
+
+    def _build_claude_page(self) -> None:
+        from ..core import vision
+
+        page = Adw.PreferencesPage()
+        page.set_title("Claude (OCR)")
+        page.set_icon_name("applets-screenshooter-symbolic")
+        group = Adw.PreferencesGroup()
+        group.set_title("Ler texto da tela")
+        group.set_description(
+            "A tela de 'Ler tela' usa a API do Claude pra extrair o texto de um recorte. "
+            "A chave fica só nesta máquina, num arquivo com permissão restrita."
+        )
+        try:
+            current = vision.load_settings()
+        except Exception:  # config quebrado: começa em branco
+            current = vision.VisionSettings()
+        self._claude_key = Adw.PasswordEntryRow()
+        self._claude_key.set_title("Chave da API (sk-ant-…)")
+        self._claude_key.set_text(current.api_key)
+        self._claude_model = Adw.EntryRow()
+        self._claude_model.set_use_markup(False)
+        self._claude_model.set_title("Modelo")
+        self._claude_model.set_text(current.model)
+        group.add(self._claude_key)
+        group.add(self._claude_model)
+        save = button("Salvar chave", "pill", "suggested-action")
+        save.set_halign(Gtk.Align.CENTER)
+        save.set_margin_top(12)
+        save.connect("clicked", self._save_claude)
+        group.add(save)
+        page.add(group)
+        self.dialog.add(page)
+
+    def _save_claude(self, *_):
+        from ..core import vision
+
+        key = self._claude_key.get_text().strip()
+        model = self._claude_model.get_text().strip() or vision.DEFAULT_MODEL
+        try:
+            vision.save_settings(vision.VisionSettings(api_key=key, model=model))
+        except Exception as e:
+            self.toast(f"Não consegui salvar ({e})")
+            return
+        self.toast("Chave salva" if key else "Chave removida")
 
     def _clear(self) -> None:
         for group, w in self._rows:

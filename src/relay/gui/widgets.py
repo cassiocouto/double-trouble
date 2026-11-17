@@ -13,7 +13,10 @@ import gi
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
-from gi.repository import Adw, Gdk, Gio, GLib, GObject, Gtk, Pango  # noqa: E402
+import gi as _gi  # noqa: E402
+
+_gi.require_version("GdkPixbuf", "2.0")
+from gi.repository import Adw, Gdk, GdkPixbuf, Gio, GLib, GObject, Gtk, Pango  # noqa: E402
 
 from .form import Field, FormModel  # noqa: E402
 
@@ -356,3 +359,133 @@ class ImageView:
         from ..core.media import sniff
 
         return sniff(self.data).extensao
+
+
+def pixbuf_from_png(data: bytes) -> GdkPixbuf.Pixbuf:
+    loader = GdkPixbuf.PixbufLoader()
+    loader.write(data)
+    loader.close()
+    pb = loader.get_pixbuf()
+    if pb is None:
+        raise ValueError("imagem inválida")
+    return pb
+
+
+def png_from_pixbuf(pb: GdkPixbuf.Pixbuf) -> bytes:
+    ok, buf = pb.save_to_bufferv("png", [], [])
+    if not ok:
+        raise ValueError("não consegui gerar o PNG")
+    return bytes(buf)
+
+
+class CropView:
+    """Mostra uma imagem e deixa arrastar um retângulo pra recortar um pedaço.
+
+    O retângulo é desenhado numa camada por cima da imagem. As coordenadas da
+    tela viram pixels da imagem levando em conta a escala e as bordas (a imagem
+    cabe na área, centralizada). crop_png() devolve o recorte, ou a imagem
+    inteira se nada foi selecionado.
+    """
+
+    MIN_PIXELS = 4
+
+    def __init__(self):
+        self.pixbuf: GdkPixbuf.Pixbuf | None = None
+        self.iw = self.ih = 0
+        self._start: tuple[float, float] | None = None
+        self._cur: tuple[float, float] | None = None
+        self.picture = Gtk.Picture()
+        self.picture.set_can_shrink(True)
+        self.picture.set_content_fit(Gtk.ContentFit.CONTAIN)
+        self.overlay = Gtk.Overlay()
+        self.overlay.set_child(self.picture)
+        self.area = Gtk.DrawingArea()
+        self.area.set_draw_func(self._draw)
+        self.overlay.add_overlay(self.area)
+        drag = Gtk.GestureDrag()
+        drag.connect("drag-begin", self._begin)
+        drag.connect("drag-update", self._update)
+        drag.connect("drag-end", self._end)
+        self.area.add_controller(drag)
+        self.scroller = Gtk.ScrolledWindow()
+        self.scroller.set_min_content_height(420)
+        self.scroller.set_child(self.overlay)
+        self.scroller.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        self.widget = self.scroller
+
+    def set_image(self, data: bytes) -> None:
+        self.pixbuf = pixbuf_from_png(data)
+        self.iw, self.ih = self.pixbuf.get_width(), self.pixbuf.get_height()
+        self.picture.set_paintable(Gdk.Texture.new_for_pixbuf(self.pixbuf))
+        self._start = self._cur = None
+        self.area.queue_draw()
+
+    @property
+    def has_image(self) -> bool:
+        return self.pixbuf is not None
+
+    def _geom(self):
+        w, h = self.area.get_width(), self.area.get_height()
+        if not (w and h and self.iw and self.ih):
+            return None
+        scale = min(w / self.iw, h / self.ih)
+        dw, dh = self.iw * scale, self.ih * scale
+        return scale, (w - dw) / 2, (h - dh) / 2, dw, dh
+
+    def _begin(self, gesture, x, y):
+        self._start = (x, y)
+        self._cur = (x, y)
+        self.area.queue_draw()
+
+    def _update(self, gesture, ox, oy):
+        if self._start:
+            self._cur = (self._start[0] + ox, self._start[1] + oy)
+            self.area.queue_draw()
+
+    def _end(self, gesture, ox, oy):
+        self._update(gesture, ox, oy)
+
+    def _draw(self, area, cr, w, h):
+        if not (self._start and self._cur):
+            return
+        x0, y0 = self._start
+        x1, y1 = self._cur
+        rx, ry = min(x0, x1), min(y0, y1)
+        rw, rh = abs(x1 - x0), abs(y1 - y0)
+        cr.set_source_rgba(0.2, 0.5, 0.9, 0.2)
+        cr.rectangle(rx, ry, rw, rh)
+        cr.fill()
+        cr.set_source_rgba(0.2, 0.5, 0.9, 0.9)
+        cr.set_line_width(1.5)
+        cr.rectangle(rx, ry, rw, rh)
+        cr.stroke()
+
+    def selection_pixels(self):
+        geom = self._geom()
+        if not (self._start and self._cur and geom):
+            return None
+        scale, ox, oy, _dw, _dh = geom
+        xs = sorted((self._start[0], self._cur[0]))
+        ys = sorted((self._start[1], self._cur[1]))
+        x0 = max(0, (xs[0] - ox) / scale)
+        y0 = max(0, (ys[0] - oy) / scale)
+        x1 = min(self.iw, (xs[1] - ox) / scale)
+        y1 = min(self.ih, (ys[1] - oy) / scale)
+        px, py = round(x0), round(y0)
+        pw, ph = round(x1 - x0), round(y1 - y0)
+        if pw < self.MIN_PIXELS or ph < self.MIN_PIXELS:
+            return None
+        return px, py, pw, ph
+
+    def crop_png(self) -> bytes:
+        if self.pixbuf is None:
+            raise ValueError("não tem imagem pra recortar")
+        sel = self.selection_pixels()
+        if sel is None:
+            return png_from_pixbuf(self.pixbuf)
+        px, py, pw, ph = sel
+        return png_from_pixbuf(self.pixbuf.new_subpixbuf(px, py, pw, ph))
+
+    def clear_selection(self) -> None:
+        self._start = self._cur = None
+        self.area.queue_draw()

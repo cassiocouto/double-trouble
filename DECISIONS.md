@@ -554,3 +554,30 @@ na resolução cheia). Agora a imagem fica numa área rolável mais alta, a tela
 de executar é mais larga (1200px), e um botão alterna entre "caber na largura"
 e "tamanho real" (100%, com rolagem nos dois sentidos). O 100% é o que vai
 servir pra selecionar uma região pixel a pixel no próximo passo.
+
+## Ler texto da tela (OCR)
+
+**D86. OCR pela API do Claude, chamada do controlador.**
+A leitura do texto roda na máquina que usa a interface (a HP), que já recebe o
+print. A chave da API fica só nela, num `~/.config/relay/claude.json` modo 600,
+separada dos segredos de pareamento. A G15 nunca vê a chave. Em runtime o
+projeto só usa a biblioteca padrão, então a chamada vai por HTTPS com `urllib`,
+sem o SDK; o transporte é injetável pros testes não tocarem na rede.
+
+**D87. Modelo padrão opus-5-5, configurável.**
+Sigo o padrão da referência da API (opus-5-5). Como é uma chamada por recorte e
+pode ser bastante, deixei o modelo configurável nas Configurações, pra trocar
+por um Sonnet/Haiku mais barato sem mexer no código.
+
+**D88. Recorte na HP, com GdkPixbuf.**
+O print vem inteiro da G15 e o recorte é feito na HP, arrastando um retângulo
+sobre a imagem (uma camada de desenho por cima do `Gtk.Picture`). As
+coordenadas da tela viram pixels da imagem pela escala. O recorte sai com
+`GdkPixbuf.new_subpixbuf`, sem depender do PIL. Nada de imagem vai pra rede
+além do recorte que você escolheu.
+
+**D89. Bloco de texto que acumula e libera.**
+O `CaptureVM` (puro, testado) junta o texto de cada recorte num bloco, separado
+por linha em branco, e dá pra editar à mão. "Liberar" devolve o bloco inteiro
+(copia e oferece salvar) e começa um novo, vazio. É o ciclo que você descreveu:
+vários recortes, um release, repete.

@@ -99,6 +99,41 @@ class MainWindow(Adw.ApplicationWindow):
         vm.changed.connect(lambda: self.history_vm.reload() if vm.state in (RunVM.DONE, RunVM.FAILED) else None)
         self._push(RunPage(self, vm))
 
+    def show_capture(self, machine: str) -> None:
+        from .pages import CapturePage
+
+        self._push(CapturePage(self, machine))
+
+    def make_extractor(self):
+        """Função que a tela de captura usa pra ler o recorte com a API do Claude.
+
+        Lê a chave na hora de cada chamada, pra uma chave recém-salva valer.
+        """
+        from ..core import vision
+
+        def extract(image_png: bytes, mode: str, question):
+            return vision.extract_text(image_png, mode=mode, question=question, settings=vision.load_settings())
+
+        return extract
+
+    def save_text(self, text: str, suggested_name: str = "texto") -> None:
+        dialog = Gtk.FileDialog()
+        stamp = GLib.DateTime.new_now_local().format("%Y%m%d-%H%M%S")
+        dialog.set_initial_name(f"{suggested_name}-{stamp}.txt")
+
+        def done(dlg, result):
+            try:
+                gfile = dlg.save_finish(result)
+            except GLib.Error:
+                return
+            try:
+                Gio.File.replace_contents(gfile, text.encode("utf-8"), None, False, Gio.FileCreateFlags.NONE, None)
+                self.toast("Texto salvo")
+            except GLib.Error as e:
+                self.toast(f"Não consegui salvar ({e.message})")
+
+        dialog.save(self, None, done)
+
     def show_history(self) -> None:
         self.history_vm.reload()
         self._push(HistoryPage(self, self.history_vm))
