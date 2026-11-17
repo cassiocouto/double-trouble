@@ -13,7 +13,7 @@ import gi
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
-from gi.repository import Adw, Gdk, GLib, GObject, Gtk, Pango  # noqa: E402
+from gi.repository import Adw, Gdk, Gio, GLib, GObject, Gtk, Pango  # noqa: E402
 
 from .form import Field, FormModel  # noqa: E402
 
@@ -246,3 +246,81 @@ class FormView:
     def set_sensitive(self, sensitive: bool) -> None:
         for w in self.widgets.values():
             w.set_sensitive(sensitive)
+
+
+class ImageView:
+    """Mostra a imagem que um comando devolveu, com botão de salvar.
+
+    Pra arquivo que não é imagem (um PDF, por exemplo), mostra só o tamanho e
+    o botão de salvar.
+    """
+
+    def __init__(self, win):
+        self.win = win
+        self.data = b""
+        self.name = "arquivo"
+        self.container = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        self.container.set_margin_top(6)
+        head = Gtk.Box(spacing=6)
+        self.title = label("Imagem", "heading")
+        head.append(self.title)
+        spacer = Gtk.Box()
+        spacer.set_hexpand(True)
+        head.append(spacer)
+        save = button("Salvar…", "flat")
+        save.connect("clicked", self._save)
+        head.append(save)
+        self.container.append(head)
+        self.picture = Gtk.Picture()
+        self.picture.set_can_shrink(True)
+        self.picture.set_content_fit(Gtk.ContentFit.CONTAIN)
+        self.picture.set_size_request(-1, 320)
+        frame = Gtk.Frame()
+        frame.set_child(self.picture)
+        self.frame = frame
+        self.container.append(frame)
+        self.note = label("", "dim-label", "caption")
+        self.container.append(self.note)
+
+    def show(self, data: bytes, is_image: bool, suggested_name: str = "arquivo") -> None:
+        self.data = data
+        self.name = suggested_name
+        shown_image = False
+        if is_image:
+            try:
+                texture = Gdk.Texture.new_from_bytes(GLib.Bytes.new(data))
+                self.picture.set_paintable(texture)
+                self.title.set_label("Imagem")
+                self.frame.set_visible(True)
+                self.note.set_label(f"{texture.get_width()}x{texture.get_height()} · {len(data) // 1024} KiB")
+                shown_image = True
+            except GLib.Error:
+                shown_image = False
+        if not shown_image:
+            self.frame.set_visible(False)
+            self.title.set_label("Arquivo")
+            self.note.set_label(f"{len(data) // 1024} KiB · use Salvar pra guardar")
+
+    def _save(self, *_):
+        dialog = Gtk.FileDialog()
+        stamp = GLib.DateTime.new_now_local().format("%Y%m%d-%H%M%S")
+        dialog.set_initial_name(f"{self.name}-{stamp}{self._extension()}")
+
+        def done(dlg, result):
+            try:
+                gfile = dlg.save_finish(result)
+            except GLib.Error:
+                return  # o usuário cancelou
+            try:
+                Gio.File.replace_contents(gfile, self.data, None, False, Gio.FileCreateFlags.NONE, None)
+                self.win.toast("Arquivo salvo")
+            except GLib.Error as e:
+                self.win.toast(f"Não consegui salvar ({e.message})")
+
+        dialog.save(self.win, None, done)
+
+    def _extension(self) -> str:
+        # Descobre a extensão pelos primeiros bytes (igual ao agente).
+        from ..core.media import sniff
+
+        return sniff(self.data).extensao

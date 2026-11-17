@@ -189,3 +189,24 @@ def test_notificar_example_ends_options():
 
     code = (resources.files("relay") / "data" / "exemplos" / "notificar.py").read_text()
     assert '"--", f"Mensagem de {sender}", p["texto"]' in code
+
+
+def test_screenshot_example_metadata():
+    """O exemplo screenshot é um comando válido (lido só com ast, sem rodar)."""
+    from importlib import resources
+
+    from relay.core import commands
+
+    src = (resources.files("relay") / "data" / "exemplos" / "screenshot.py").read_text()
+    import os
+
+    folder = commands.paths.commands_dir()
+    folder.mkdir(parents=True, exist_ok=True)
+    p = folder / "screenshot.py"
+    p.write_text(src)
+    os.chmod(p, 0o600)
+    meta = commands.inspect("screenshot")
+    assert meta.categoria == "Tela"
+    assert meta.icone == "applets-screenshooter-symbolic"
+    assert [x.nome for x in (meta.parametros or [])] == ["cursor"]
+    assert meta.avisos == []

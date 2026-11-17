@@ -491,3 +491,41 @@ Rodando na sua máquina, os testes poderiam achar o barramento do desktop pelo
 `XDG_RUNTIME_DIR` ou pegar o `DISPLAY` pelo `systemctl --user`. Agora o
 `conftest.py` aponta o `XDG_RUNTIME_DIR` pra uma pasta temporária e desliga a
 leitura do ambiente da sessão (`RELAY_NO_SESSION_ENV`).
+
+## Screenshot e arquivos de volta
+
+**D78. Um comando pode devolver um arquivo binário (artefato).**
+Até aqui um comando só devolvia texto (stdout/stderr), com teto de 256 KiB.
+Uma imagem é binária e maior. Agora o agente dá ao comando um caminho em
+`RELAY_OUTPUT_FILE`; se o comando escrever um arquivo ali, o agente lê quando
+o comando termina, descobre o tipo pelos primeiros bytes (não confia no que o
+comando diz), e manda de volta em frames `artefato`, em base64, antes do
+`fim`. O controlador junta os pedaços. É genérico: serve pra imagem, PDF, o
+que for.
+
+**D79. Limites do artefato: 8 MiB por arquivo, 64 MiB na memória do agente.**
+Um print cabe de sobra em 8 MiB. Acima disso o agente recusa e diz o motivo
+(`artefato_erro`), sem derrubar o comando. O agente guarda os artefatos na
+memória pra o `status` poder reenviar depois, com teto total de 64 MiB,
+soltando os mais antigos. O arquivo é lido com `O_NOFOLLOW` e precisa ser
+arquivo comum: um comando bugado não faz o agente devolver outra coisa por um
+link simbólico.
+
+**D80. Em timeout ou cancelamento, o artefato é descartado.**
+Aí o arquivo pode estar pela metade. Com código != 0 (o comando rodou até o
+fim) o artefato é lido normalmente, porque pode ser útil.
+
+**D81. Screenshot sem notificação nem atalho de teclado.**
+No GNOME (X11 ou Wayland) o comando usa a API do próprio shell
+(`org.gnome.Shell.Screenshot`, com flash desligado), que escreve o PNG direto,
+sem piscar a tela e sem notificação. Não usa o portal (que às vezes pede
+confirmação) nem atalho de teclado. Fora do GNOME, tenta `grim`,
+`gnome-screenshot -f`, `spectacle`, `scrot`, `maim` e o ImageMagick, nessa
+ordem, e diz qual funcionou. Se nenhum existe, sugere instalar o
+`gnome-screenshot`.
+
+**D82. A imagem aparece na interface e salva na CLI.**
+Na interface, a tela de executar mostra a imagem assim que ela chega
+(`Gtk.Picture` + `Gdk.Texture`), com botão de salvar. Pela linha de comando,
+`relay rodar <maq> screenshot --salvar <pasta>` grava o arquivo com nome
+automático. O `relay-gui --checar` monta a tela com uma imagem de exemplo.

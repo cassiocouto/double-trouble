@@ -202,15 +202,38 @@ Respostas, em ordem:
 1. `aceito` com `job` (id), `comando`, `timeout`. Com `seguir: false` este é o fim.
 2. zero ou mais `saida` com `job`, `fluxo` (`stdout` ou `stderr`) e `dados` (texto).
 3. `vivo` a cada 10 s de silêncio, pra o controlador saber que a conexão está viva.
-4. `fim` com `resultado`:
+4. zero ou mais `artefato` (se o comando escreveu um arquivo binário, ver abaixo).
+5. `fim` com `resultado`:
 
 ```json
 {"job": "a1b2c3d4e5f60718", "comando": "notificar", "estado": "ok", "inicio": 1763246400.0,
  "duracao": 0.12, "codigo": 0, "truncado": false, "timeout": 15,
- "ok": true, "estourou_tempo": false, "cancelado": false}
+ "ok": true, "estourou_tempo": false, "cancelado": false,
+ "artefato": {"tipo": "image/png", "imagem": true, "bytes": 51234}}
 ```
 
 `estado` é `rodando`, `ok`, `falhou`, `cancelado`, `tempo_esgotado` ou `erro`.
+`artefato` só aparece quando o comando devolveu um arquivo. Se o arquivo foi
+recusado (grande demais, link simbólico), vem `artefato_erro` com o motivo.
+
+### Arquivo binário de volta (artefato)
+
+O agente dá ao comando um caminho em `RELAY_OUTPUT_FILE`. Se o comando
+escrever um arquivo ali (uma imagem, um PDF), o agente lê esse arquivo quando
+o comando termina com sucesso (ou com código != 0; em timeout ou cancelamento
+não lê, porque pode estar pela metade), descobre o tipo pelos **primeiros
+bytes** (não confia no que o comando diz) e manda de volta em frames
+`artefato`, antes do `fim`:
+
+```json
+{"tipo": "artefato", "job": "...", "tipo_midia": "image/png", "imagem": true,
+ "tamanho": 51234, "parte": 0, "partes": 1, "dados64": "<base64 de até 512 KiB>"}
+```
+
+Cada frame leva um pedaço de até 512 KiB em base64 (abaixo do limite de 1 MiB
+por frame). O controlador junta os pedaços na ordem de `parte` e confere o
+total contra `tamanho`. Limites: o arquivo pode ter até 8 MiB; o agente guarda
+no máximo 64 MiB de artefatos na memória, soltando os mais antigos.
 
 Se o controlador desconectar, o job **continua** até acabar ou estourar o
 tempo. O resultado fica no histórico.
@@ -252,7 +275,12 @@ usuário da máquina. Variável de ambiente vaza pra todo processo filho. O
 stdin é privado do comando. O helper `relay.command.params()` lê isso.
 
 Comandos antigos com `ACEITA_ARGS = True` continuam recebendo `args` no
-`sys.argv`, como no v1.
+`sys.argv`.
+
+Pra **devolver um arquivo** (imagem, PDF), o comando escreve no caminho que
+está em `RELAY_OUTPUT_FILE`. O agente também passa `RELAY_CALLER` (quem
+pediu), `RELAY_COMMAND` (o nome do comando) e `RELAY_COMMAND_FILE` (o
+caminho real do arquivo do comando).
 
 ## 11. Limites
 
@@ -270,5 +298,6 @@ Comandos antigos com `ACEITA_ARGS = True` continuam recebendo `args` no
 | prazo pra mandar linha mágica + pedido | 15 s no total             |
 | regex de um parâmetro                  | 1 s, num processo à parte |
 | saída guardada pelo controlador        | 1 Mi caracteres por job   |
+| arquivo binário de volta (artefato)    | 8 MiB; 64 MiB na memória do agente |
 | jobs em paralelo                       | 4 (configurável, `max_paralelo`) |
 | jobs guardados no histórico            | 50                        |

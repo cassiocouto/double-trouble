@@ -13,20 +13,24 @@ Ordem das checagens num pedido
 
 from __future__ import annotations
 
+import base64
 import ipaddress
 import json
 import os
 import socket
 import socketserver
 import sys
+import tempfile
 import threading
 import time
 from collections.abc import Callable
+from pathlib import Path
 
 from .. import __version__
 from ..core import commands, protocol
 from ..core.config import Config, ConfigSource, ControllerEntry
 from ..core.errors import AuthError, CommandError, ParamError, ProtocolError, RelayError
+from ..core.media import ARTIFACT_CHUNK
 from ..core.params import validate_values
 from ..core.tailscale import WhoisChecker
 from .execute import build_spec
@@ -402,11 +406,16 @@ class AgentServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
                     return out.error(f"'{name}' não declara PARAMETROS", "parametro")
                 if args and not meta.aceita_args:
                     return out.error(f"'{name}' não aceita argumentos (ponha ACEITA_ARGS = True no arquivo)", "args")
-            spec = build_spec(resolved, args, entry.name, meta.timeout, stdin_data=stdin_data)
+            # Pasta temporária onde o comando pode escrever uma imagem/PDF que
+            # volta pro controlador. O job a apaga quando termina.
+            art_dir = tempfile.mkdtemp(prefix="relay-saida-")
+            art_file = str(Path(art_dir) / "saida")
+            spec = build_spec(resolved, args, entry.name, meta.timeout, stdin_data=stdin_data, output_file=art_file)
             shown = _redact(meta.parametros, clean_params)  # o job guarda só a versão pra log
             try:
-                job = self.jobs.start(entry.name, name, spec, shown, args)
+                job = self.jobs.start(entry.name, name, spec, shown, args, artifact_file=art_file, artifact_dir=art_dir)
             except Busy as e:
+                _cleanup(art_dir)
                 return out.error(str(e), "ocupado")
         finally:
             resolved.close()
@@ -443,7 +452,28 @@ class AgentServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
                 last = time.monotonic()
             if chunks:
                 time.sleep(0.05)  # deixa juntar mais saída num frame só
+        self._send_artifact(job, out)
         out.send("fim", fim=True, job=job.id, resultado=job.result_dict())
+
+    def _send_artifact(self, job: Job, out: protocol.Responder) -> None:
+        """Manda a imagem/PDF (se o comando escreveu uma) em pedaços antes do fim."""
+        art = job.artifact
+        if art is None:
+            return
+        data = art.data
+        total = (len(data) + ARTIFACT_CHUNK - 1) // ARTIFACT_CHUNK
+        for i in range(total):
+            pedaco = data[i * ARTIFACT_CHUNK : (i + 1) * ARTIFACT_CHUNK]
+            out.send(
+                "artefato",
+                job=job.id,
+                tipo_midia=art.kind.tipo,
+                imagem=art.kind.imagem,
+                tamanho=len(data),
+                parte=i,
+                partes=total,
+                dados64=base64.b64encode(pedaco).decode("ascii"),
+            )
 
     def do_cancel(self, cfg, entry, req, out, ip) -> None:
         job = self.jobs.cancel(_job_id(req), entry.name)
@@ -468,6 +498,12 @@ class AgentServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
             limit = MAX_HISTORY
         jobs = [j.summary() for j in self.jobs.recent(entry.name, limit)]
         out.send("historico", fim=True, jobs=jobs)
+
+
+def _cleanup(path: str) -> None:
+    import shutil
+
+    shutil.rmtree(path, ignore_errors=True)
 
 
 def _job_id(req: dict) -> str | None:

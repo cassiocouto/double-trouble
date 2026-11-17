@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import base64
+import binascii
 import contextlib
 import socket
 import time
@@ -11,6 +13,7 @@ from dataclasses import dataclass, field
 from . import protocol
 from .config import Config, MachineEntry
 from .errors import AuthError, ConnectionFailed, ProtocolError, RemoteError
+from .media import MAX_ARTIFACT_BYTES
 
 CONNECT_TIMEOUT = 10
 READ_TIMEOUT = 30  # o agente manda "vivo" a cada 10 s enquanto um job roda em silêncio
@@ -35,6 +38,10 @@ class RunOutcome:
     stderr: list[str] = field(default_factory=list)
     kept: int = 0
     truncated: bool = False
+    artifact: bytes | None = None
+    artifact_type: str | None = None
+    artifact_is_image: bool = False
+    _artifact_parts: dict = field(default_factory=dict)
 
     @property
     def text_stdout(self) -> str:
@@ -231,11 +238,41 @@ class Client:
                         outcome.kept += len(data)
                         target = outcome.stderr if frame.get("fluxo") == "stderr" else outcome.stdout
                         target.append(data)
+            elif tipo == "artefato":
+                _collect_artifact(outcome, frame)
             elif tipo == "fim" and isinstance(frame.get("resultado"), dict):
                 outcome.result = frame["resultado"]
             if on_event:
                 on_event(frame)
         return outcome
+
+
+def _collect_artifact(outcome: RunOutcome, frame: dict) -> None:
+    """Junta os pedaços do artefato (imagem/PDF) que o agente mandou em base64."""
+    if outcome.artifact is not None:
+        return
+    parte, partes = frame.get("parte"), frame.get("partes")
+    data64, total = frame.get("dados64"), frame.get("tamanho")
+    if not isinstance(parte, int) or not isinstance(partes, int) or not isinstance(data64, str):
+        return
+    if not isinstance(total, int) or not 0 < total <= MAX_ARTIFACT_BYTES or not 0 <= parte < partes:
+        return
+    try:
+        chunk = base64.b64decode(data64, validate=True)
+    except (binascii.Error, ValueError):
+        return
+    store = outcome._artifact_parts
+    store[parte] = chunk
+    if sum(len(c) for c in store.values()) > MAX_ARTIFACT_BYTES:
+        store.clear()
+        return
+    if len(store) == partes:
+        data = b"".join(store[i] for i in range(partes))
+        store.clear()
+        if len(data) == total:
+            outcome.artifact = data
+            outcome.artifact_type = frame.get("tipo_midia") if isinstance(frame.get("tipo_midia"), str) else None
+            outcome.artifact_is_image = frame.get("imagem") is True
 
 
 def _text(value: object) -> str:

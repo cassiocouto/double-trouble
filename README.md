@@ -258,6 +258,10 @@ valor chega como `None` (ou `False`, se for booleano).
 
 - `from relay.command import caller` diz qual máquina pediu.
 - O que o comando imprimir volta pra quem chamou. O código de saída também.
+- **Devolver uma imagem ou arquivo** (um print, um PDF): escreva os bytes no
+  caminho que está em `os.environ["RELAY_OUTPUT_FILE"]`. O arquivo volta pra
+  quem chamou. Na interface, uma imagem aparece na hora; pela linha de comando,
+  use `relay rodar <maq> <cmd> --salvar <pasta>`. O arquivo pode ter até 8 MiB.
 - **Abrir um link ou arquivo** na tela da máquina: use `open_uri(url)` de
   `relay.command`. Quem abre é o próprio desktop, com o programa padrão.
   Funciona com o navegador que já estava aberto e com navegador em snap.
@@ -268,9 +272,11 @@ valor chega como `None` (ou `False`, se for booleano).
 - Nunca monte uma linha de shell com os parâmetros. Passe uma lista pro
   `subprocess.run`, como no exemplo.
 
-Os quatro exemplos (`status`, `notificar`, `travar_tela`, `abrir_url`) estão
-na pasta de comandos. Pra trocar versões antigas pelas novas:
-`relay exemplos --atualizar` (pergunta antes e guarda as antigas).
+Os exemplos (`status`, `notificar`, `travar_tela`, `abrir_url`, `screenshot`)
+estão na pasta de comandos. O `screenshot` tira um print da tela, sem
+notificação nem atalho de teclado, e devolve a imagem. Pra trocar versões
+antigas pelas novas, ou trazer um exemplo que ainda não existe na sua pasta:
+`relay exemplos --atualizar` (pergunta antes e guarda as antigas como `.bak`).
 
 ---
 

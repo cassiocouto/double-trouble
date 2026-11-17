@@ -336,3 +336,24 @@ def test_pairing_wrong_code_from_cli(tmp_path):
     assert window.returncode == 1
     assert "3 tentativas erradas" in out
     assert config_mod.load(Path(b.env["RELAY_DIR"]) / "relay.json").agent.controllers == {}
+
+
+IMG_CMD = (
+    '"""Devolve uma imagem."""\n'
+    "import os\n"
+    'open(os.environ["RELAY_OUTPUT_FILE"], "wb").write(b"\\x89PNG\\r\\n\\x1a\\n" + b"img" * 50)\n'
+    'print("imagem pronta")\n'
+)
+
+
+def test_run_saves_returned_image(machines, tmp_path):
+    a, b = machines
+    b.make_cmd("tela", IMG_CMD)
+    dest = tmp_path / "saidas"
+    dest.mkdir()
+    r = a.relay("rodar", "b", "tela", "--salvar", str(dest))
+    assert "imagem pronta" in r.stdout
+    assert "arquivo salvo em" in r.stdout
+    saved = list(dest.glob("tela-*.png"))
+    assert len(saved) == 1
+    assert saved[0].read_bytes().startswith(b"\x89PNG")

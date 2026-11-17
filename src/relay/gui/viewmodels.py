@@ -230,11 +230,14 @@ class RunVM:
         self.cancel_requested = False
         self._pending: tuple[dict | None, list[str] | None] | None = None
         self._row: int | None = None
+        self.artifact: bytes | None = None
+        self.artifact_is_image = False
         self.changed = Signal()
         self.output_added = Signal()  # (fluxo, texto)
         self.output_cleared = Signal()
         self.errors_changed = Signal()
         self.confirm_requested = Signal()  # (pergunta)
+        self.artifact_ready = Signal()  # (bytes, é_imagem)
 
     # -- rodar ------------------------------------------------------------
     @property
@@ -278,6 +281,8 @@ class RunVM:
         self.output_cleared.emit()
         self.job = None
         self.result = None
+        self.artifact = None
+        self.artifact_is_image = False
         self.message = ""
         self.cancel_requested = False
         self.state = self.RUNNING
@@ -342,11 +347,24 @@ class RunVM:
     def _on_done(self, outcome) -> None:
         self.ended_at = self.clock()
         self.result = outcome.result if isinstance(outcome.result, dict) else None
+        if getattr(outcome, "artifact", None) is not None:
+            self.artifact = outcome.artifact
+            self.artifact_is_image = bool(getattr(outcome, "artifact_is_image", False))
         self.state = self.DONE
         self.message = self.result_text()
         self._finish_history(error=None)
         self.changed.emit()
+        if self.artifact is not None:
+            self.artifact_ready.emit(self.artifact, self.artifact_is_image)
         self._maybe_notify()
+
+    def save_artifact(self, path) -> str:
+        """Salva o arquivo que o comando devolveu. Devolve o caminho usado."""
+        from pathlib import Path
+
+        p = Path(path)
+        p.write_bytes(self.artifact or b"")
+        return str(p)
 
     def _on_error(self, msg: str) -> None:
         self.ended_at = self.clock()
