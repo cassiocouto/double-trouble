@@ -687,3 +687,73 @@ class PairAgentVM:
         self.message = f"Pronto! {result.controller} e esta máquina agora mandam uma na outra"
         self.settings.changed.emit()
         self.changed.emit()
+
+
+# ==========================================================================
+# Captura de texto (OCR): acumula o texto de vários recortes num bloco
+
+
+class CaptureVM:
+    """Um bloco de texto que cresce a cada recorte lido, até você liberar.
+
+    Fluxo: para cada recorte, add_crop() manda a imagem pro extrator (a API do
+    Claude, injetada), e o texto que volta é concatenado no bloco. release()
+    devolve o bloco inteiro e começa um novo, vazio.
+    """
+
+    def __init__(self, service: ControllerService, extractor):
+        self.service = service
+        self.extractor = extractor  # (image_png, mode, question) -> texto
+        self.block = ""
+        self.snippets = 0
+        self.busy = False
+        self.error = ""
+        self.changed = Signal()
+        self.block_changed = Signal()  # (texto do bloco)
+
+    def add_crop(self, image_png: bytes, mode: str = "ocr", question: str | None = None) -> None:
+        if self.busy:
+            return
+        self.busy = True
+        self.error = ""
+        self.changed.emit()
+
+        def ok(text: str) -> None:
+            self.busy = False
+            self._append(text)
+            self.changed.emit()
+
+        def fail(msg: str) -> None:
+            self.busy = False
+            self.error = msg
+            self.changed.emit()
+
+        self.service.submit(lambda: self.extractor(image_png, mode, question), ok, fail)
+
+    def _append(self, text: str) -> None:
+        text = text.strip()
+        if not text:
+            return
+        self.block = f"{self.block}\n\n{text}" if self.block else text
+        self.snippets += 1
+        self.block_changed.emit(self.block)
+
+    def set_block(self, text: str) -> None:
+        """Deixa você editar o bloco à mão (a tela devolve o que você digitou)."""
+        self.block = text
+
+    def clear(self) -> None:
+        self.block = ""
+        self.snippets = 0
+        self.block_changed.emit(self.block)
+        self.changed.emit()
+
+    def release(self) -> str:
+        """Devolve o bloco atual e começa um novo, vazio."""
+        text = self.block
+        self.clear()
+        return text
+
+    @property
+    def has_text(self) -> bool:
+        return bool(self.block.strip())
