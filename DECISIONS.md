@@ -429,3 +429,13 @@ o `relay migrar`. As duas máquinas começam com `relay init` e pareamento por
 código. Os bugs achados na versão antiga continuam descritos no D03, e os
 testes de ataque do v2 cobrem as mesmas garantias. Um teste confere que o
 nome antigo não volta em nenhum arquivo do repositório.
+
+## Correções depois da instalação
+
+**D71. Porta ocupada não deixa o serviço preso em "activating".**
+Na HP, outro programa já usava a porta 47800. O agente ficava tentando de novo
+sem mandar READY, e o systemd acabaria matando ele por demora e reiniciando
+em loop. Agora, igual à espera do Tailscale, ele manda READY depois de 30 s e
+continua tentando. O STATUS explica que outro programa usa a porta e mostra o
+comando pra ver qual (`ss -ltnp | grep 47800`). Quando a porta libera, ele
+escuta sozinho.
