@@ -12,6 +12,7 @@ Ciclo
 
 from __future__ import annotations
 
+import errno
 import threading
 import time
 from collections.abc import Callable
@@ -131,7 +132,15 @@ class AgentService:
             except (OSError, RelayError) as e:
                 # RelayError: o config quebrou entre a checagem acima e agora. Espera em vez de cair.
                 why = getattr(e, "strerror", None) or e
-                self._set_status(f"não consegui escutar em {host}:{cfg.agent.port} ({why}), tentando de novo")
+                hint = ""
+                if getattr(e, "errno", None) == errno.EADDRINUSE:
+                    port = cfg.agent.port
+                    hint = f". Outro programa já usa a porta {port}. Veja quem com: ss -ltnp | grep {port}"
+                self._set_status(f"não consegui escutar em {host}:{cfg.agent.port} ({why}){hint}, tentando de novo")
+                # Igual à espera do Tailscale: avisa o systemd depois do prazo, senão ele
+                # mata o serviço por demora e entra em loop de reinício.
+                if time.monotonic() - started > self.ready_grace:
+                    self._ready()
                 if self._wait(backoff):
                     break
                 backoff = min(backoff * 2, self.max_backoff)

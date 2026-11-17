@@ -300,3 +300,34 @@ def test_agent_process_refuses_root(tmp_path, monkeypatch):
     monkeypatch.setattr(os, "geteuid", lambda: 0)
     with pytest.raises(RelayError, match="não roda como root"):
         service.check_not_root()
+
+
+def test_service_reports_busy_port_and_still_becomes_ready(tmp_path):
+    """Porta ocupada por outro programa: explica no STATUS, avisa o systemd e segue tentando."""
+    busy = socket.socket()
+    busy.bind(("127.0.0.1", 0))
+    busy.listen(1)
+    port = busy.getsockname()[1]
+    base, _ = make_config(tmp_path, port=port)
+    sent = []
+    svc = AgentService(
+        ConfigSource(base / "relay.json"),
+        base_dir=base,
+        notify=lambda *m: sent.append(m) or True,
+        find_ip=lambda: "127.0.0.1",
+        max_backoff=0.1,
+        ready_grace=0.3,
+    )
+    t = threading.Thread(target=svc.run, daemon=True)
+    t.start()
+    try:
+        assert wait_until(lambda: any("READY=1" in m for m in sent), timeout=5)
+        statuses = [x for m in sent for x in m if x.startswith("STATUS=")]
+        assert any("Outro programa já usa a porta" in x and "ss -ltnp" in x for x in statuses)
+        assert svc.server is None
+        busy.close()  # a porta liberou: o agente pega ela sozinho
+        assert wait_until(lambda: svc.server is not None, timeout=5)
+    finally:
+        busy.close()
+        svc.stop()
+        t.join(10)
