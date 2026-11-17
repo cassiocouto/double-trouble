@@ -6,6 +6,7 @@ não ter DISPLAY e afins. Perguntar ao systemd na hora resolve isso.
 
 from __future__ import annotations
 
+import os
 import subprocess
 
 SESSION_ENV_KEYS = (
@@ -30,6 +31,8 @@ def parse_show_environment(text: str) -> dict[str, str]:
 
 
 def session_env() -> dict[str, str]:
+    if os.environ.get("RELAY_NO_SESSION_ENV"):
+        return {}  # usado pelos testes: nunca pegar a sessão gráfica de verdade
     try:
         r = subprocess.run(
             ["systemctl", "--user", "show-environment"],

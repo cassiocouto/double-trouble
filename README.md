@@ -258,9 +258,12 @@ valor chega como `None` (ou `False`, se for booleano).
 
 - `from relay.command import caller` diz qual máquina pediu.
 - O que o comando imprimir volta pra quem chamou. O código de saída também.
-- **Programa que precisa continuar aberto** (um navegador, um app): use
-  `detach(["xdg-open", url])` de `relay.command`. Sem isso, ele morre quando o
-  comando acabar, porque o agente encerra tudo que o comando deixou rodando.
+- **Abrir um link ou arquivo** na tela da máquina: use `open_uri(url)` de
+  `relay.command`. Quem abre é o próprio desktop, com o programa padrão.
+  Funciona com o navegador que já estava aberto e com navegador em snap.
+- **Abrir um programa que precisa continuar aberto** (um app): use
+  `detach(["gnome-calculator"])`. Sem isso, ele morre quando o comando acabar,
+  porque o agente encerra tudo que o comando deixou rodando.
 - `sudo` e `pkexec` não funcionam dentro de um comando, de propósito.
 - Nunca monte uma linha de shell com os parâmetros. Passe uma lista pro
   `subprocess.run`, como no exemplo.
@@ -330,8 +333,11 @@ você consertar. É de propósito.
 **A interface não abre.** Rode `relay-gui` num terminal e veja a mensagem.
 Normalmente falta pacote do apt (veja "Instalar", passo 1).
 
-**Um navegador aberto pelo comando fecha sozinho.** Use `detach()` (veja
-"Dicas").
+**O comando diz que abriu, mas nada aparece na tela.** O link ou programa
+abre na máquina **onde o comando roda**, não na que mandou. Se for lá mesmo,
+use `open_uri()` pra links e `detach()` pra programas (veja "Dicas"). Se o seu
+`abrir_url` é de antes dessa correção, troque pela versão nova com
+`relay exemplos --atualizar`.
 
 **Auditoria.** Tudo que o agente recusou ou rodou fica em
 `~/.local/state/relay/auditoria.jsonl` (quem, o quê, parâmetros, código,

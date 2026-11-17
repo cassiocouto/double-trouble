@@ -23,6 +23,8 @@ def isolated_dirs(tmp_path, monkeypatch):
     src = str(Path(__file__).resolve().parents[1] / "src")
     monkeypatch.setenv("PYTHONPATH", src)
     # Sem sessao grafica: nenhum teste deve conseguir mexer na tela.
+    monkeypatch.setenv("RELAY_NO_SESSION_ENV", "1")
+    monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path / "run"))
     for key in ("DISPLAY", "WAYLAND_DISPLAY", "DBUS_SESSION_BUS_ADDRESS"):
         monkeypatch.delenv(key, raising=False)
     yield
