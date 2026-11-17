@@ -472,3 +472,22 @@ todas as telas com dados de exemplo, passa por todos os estados (carregando,
 erro, rodando, terminou, cancelado...) e lista tudo que quebrou de uma vez,
 sem mostrar janela, sem abrir pareamento e sem mexer na área de transferência.
 Ele usa um app id separado, pra não se misturar com uma janela já aberta.
+
+**D76. Links abrem pelo portal do desktop.**
+O `abrir_url` dizia "deu certo" mas nada abria na G15. O `xdg-open` rodava numa
+unidade do systemd, abria o navegador e saía na hora; o systemd então matava
+tudo que ficou na unidade, inclusive o navegador novo ou o pedido pro navegador
+já aberto. E se o `systemd-run` falhasse, o plano B rodava dentro das regras do
+agente, onde um navegador em snap não abre (o `NoNewPrivileges` impede o
+`snap-confine`), e ninguém via o erro. Agora `open_uri()` pede pro portal do
+desktop (xdg-desktop-portal) abrir o link: quem abre é a sessão gráfica, com o
+navegador padrão, fora do agente. Se o portal não responder, cai no `xdg-open`
+com `KillMode=process` (o systemd não mata o que o lançador deixou rodando), e
+qualquer falha aparece na saída do comando. O resultado diz por qual caminho
+abriu.
+
+**D77. Testes nunca enxergam a sessão gráfica de verdade.**
+Rodando na sua máquina, os testes poderiam achar o barramento do desktop pelo
+`XDG_RUNTIME_DIR` ou pegar o `DISPLAY` pelo `systemctl --user`. Agora o
+`conftest.py` aponta o `XDG_RUNTIME_DIR` pra uma pasta temporária e desliga a
+leitura do ambiente da sessão (`RELAY_NO_SESSION_ENV`).
