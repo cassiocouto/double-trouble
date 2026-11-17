@@ -18,9 +18,9 @@ Não existe campo de comando livre, nem shell.
 | `cass-hp-elitedesk-800-g6` | **thinker** | Pensa e manda comandos pro gêmeo |
 | `cass-dell-g15-5511` | **gêmeo** | Executa o que o thinker manda e manda informação pro thinker |
 
-Os papéis podem trocar. Por isso as duas máquinas recebem o Relay inteiro
-(agente e interface) e ficam pareadas **nas duas direções**. Trocar de papel
-não pede nenhuma mudança: é só usar a outra máquina pra mandar.
+Os papéis podem trocar. As duas máquinas recebem o Relay inteiro (agente e
+interface), e um pareamento só já libera **as duas direções**. Trocar de papel
+não pede nenhuma mudança. É só mandar pela outra máquina.
 
 Como o gêmeo manda informação pro thinker?
 
@@ -73,9 +73,9 @@ sudo ufw allow in on tailscale0 to any port 47800 proto tcp comment 'relay'
 sudo ufw allow in on tailscale0 to any port 47801 proto tcp comment 'relay pareamento'
 ```
 
-**4. Parear o thinker com o gêmeo** (a HP manda na G15).
+**4. Parear as duas.** Uma vez só. Depois disso as duas mandam uma na outra.
 
-Na **G15**:
+Numa máquina, por exemplo a **G15**:
 
 ```bash
 relay parear
@@ -83,41 +83,21 @@ relay parear
 
 Ela mostra um código de 8 números, válido por 2 minutos.
 
-Na **HP**:
+Na outra, a **HP**:
 
 ```bash
-relay parear --com cass-dell-g15-5511
+relay parear g15
 ```
 
-Digite o código quando ele pedir (o código nunca vai na linha de comando).
-Teste na HP:
+Digite o código quando ele pedir. Dá pra usar só um pedaço do nome (`g15`,
+`hp`). O Relay acha a máquina no Tailscale.
+
+**5. Testar.** Rode `relay` sozinho, nas duas. Ele mostra com quem a máquina
+está pareada, se a outra está online, e os comandos mais usados.
 
 ```bash
-relay ping g15
+relay
 ```
-
-**5. Parear na outra direção** (a G15 manda na HP). Igual, trocando as
-máquinas.
-
-Na **HP**:
-
-```bash
-relay parear
-```
-
-Na **G15**:
-
-```bash
-relay parear --com cass-hp-elitedesk-800-g6
-```
-
-Teste na G15:
-
-```bash
-relay ping hp
-```
-
-Pronto. As duas mandam e as duas executam.
 
 **6. Opcional: limitar o que cada uma pode rodar na outra.** Por padrão uma
 máquina pareada pode rodar todos os comandos da outra. Pra deixar a G15 rodar
@@ -131,9 +111,8 @@ Pra voltar a liberar tudo, use `*` no lugar da lista. Sem lista, ele só mostra
 o que está liberado. Na interface: **Configurações → Esta máquina**, no botão
 de engrenagem do lado da máquina.
 
-Pela interface o pareamento é igual: **Configurações → Esta máquina →
-Deixar outra controlar** mostra o código, e **Configurações → Máquinas →
-Parear com código** recebe ele.
+Pela interface o pareamento é igual. Em **Configurações**, uma máquina usa
+**Mostrar código** e a outra usa **Digitar código**.
 
 ---
 

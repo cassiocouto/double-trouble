@@ -530,7 +530,7 @@ class SettingsVM:
 
 
 class PairControllerVM:
-    """Esta máquina vai MANDAR: digita o código que apareceu na outra."""
+    """Digita o código que apareceu na outra máquina. Depois as duas mandam uma na outra."""
 
     def __init__(self, service: ControllerService, settings: SettingsVM, pair=None):
         from ..core import pairing
@@ -572,11 +572,11 @@ class PairControllerVM:
             self.error = msg
             self.changed.emit()
 
-        self.service.submit(lambda: self.pair(address, int(port), code, self.settings.path), ok, fail, address)
+        self.service.submit(lambda: self.pair(address, code, int(port), self.settings.path), ok, fail, address)
 
 
 class PairAgentVM:
-    """Esta máquina vai EXECUTAR: abre a janela de pareamento e mostra o código."""
+    """Abre o pareamento e mostra o código. Depois as duas mandam uma na outra."""
 
     IDLE = "parado"
     WAITING = "aguardando"
@@ -619,7 +619,7 @@ class PairAgentVM:
             return
         self.code = pairing.format_code(self.window.code)
         self.state = self.WAITING
-        self.message = f"Na outra máquina, escolha “Parear com código” e digite o código. Endereço: {cfg.name}"
+        self.message = f"Na outra máquina, use “Digitar código” e digite os números. Ou rode: relay parear {cfg.name}"
         self.changed.emit()
         window = self.window
 
@@ -660,12 +660,12 @@ class PairAgentVM:
             self.changed.emit()
             return
         try:
-            pairing.save_controller(result, self.settings.path)
+            pairing.save_result(result, self.settings.path)
         except RelayError as e:
             self._fail(friendly_error(e))
             return
         self.state = self.PAIRED
         self.controller = result.controller
-        self.message = f"{result.controller} agora pode mandar comandos pra esta máquina"
+        self.message = f"Pronto! {result.controller} e esta máquina agora mandam uma na outra"
         self.settings.changed.emit()
         self.changed.emit()

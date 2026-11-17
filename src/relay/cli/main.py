@@ -126,9 +126,9 @@ def cmd_init(a) -> None:
     say(f"  esta máquina  {cfg.name}, escutando em {cfg.agent.listen}:{cfg.agent.port}")
     if created:
         say(f"  exemplos      {', '.join(created)} em {paths.commands_dir()}")
-    say("\nPróximo passo: parear com a outra máquina")
-    say("  na máquina que vai EXECUTAR     relay parear")
-    say("  na máquina que vai MANDAR       relay parear --com <nome-da-outra>")
+    say("\nPróximo passo: parear com a outra máquina (uma vez só, vale nas duas direções)")
+    say("  numa máquina     relay parear")
+    say("  na outra         relay parear <nome>   (pode ser só um pedaço do nome, como g15)")
 
 
 # --------------------------------------------------------------------------
@@ -362,7 +362,7 @@ def cmd_maquinas(a) -> None:
     cfg = load_cfg()
     say(f"esta máquina: {cfg.name}")
     if not cfg.machines:
-        say("não controla nenhuma máquina ainda (relay parear --com <nome>)")
+        say("não controla nenhuma máquina ainda (relay parear <nome>)")
     for m in cfg.machines.values():
         say(f"  controla  {m.name:<24} {m.address}:{m.port}")
     for ctrl in cfg.agent.controllers.values():
@@ -478,26 +478,25 @@ def cmd_config(a) -> None:
 def cmd_parear(a) -> None:
     from ..core import pairing, tailscale
 
-    if a.com:
-        cfg = load_cfg()
+    target = a.maquina or a.com
+    cfg = load_cfg()
+    if target:
         code = read_secret(None, "Código que apareceu na outra máquina: ")
-        port = a.porta or config_mod.DEFAULT_PORT + 1
-        say(f"pareando com {a.com}...")
-        paired = pairing.pair_with(cfg.name, a.com, port, code)
-        pairing.save_machine(paired)
-        say(f"pronto, esta máquina ({cfg.name}) agora manda comandos pra {paired.name}")
+        say(f"pareando com {target}...")
+        paired = pairing.pair_and_save(target, code, a.porta)
+        say(f"pronto. Esta máquina e {paired.name} agora mandam uma na outra.")
         say(f"teste com:  relay ping {paired.name}")
         return
-    cfg = load_cfg()
     host = a.escutar or (cfg.agent.listen if cfg.agent.listen != "tailscale" else tailscale.own_ip(4))
     if not host:
         raise Exit(3, "não achei o IP do Tailscale (tailscale ip -4). O Tailscale está ligado?")
     window = pairing.PairingWindow(cfg, host, port=a.porta, seconds=a.tempo, on_event=lambda msg: say(f"  {msg}"))
-    say(f"Janela de pareamento aberta em {host}:{window.port} por {a.tempo:.0f} s.\n")
+    say(f"Pareamento aberto por {a.tempo:.0f} s.\n")
     say(f"    código:  {pairing.format_code(window.code)}\n")
-    say("Na máquina que vai MANDAR os comandos, rode:\n")
-    say(f"    relay parear --com {cfg.name}\n")
-    say(f"e digite o código. Depois de {pairing.MAX_FAILURES} erros a janela fecha.")
+    say("Na outra máquina, rode o comando abaixo e digite o código:\n")
+    say(f"    relay parear {cfg.name}\n")
+    say("(dá pra usar só um pedaço do nome). Depois as duas mandam uma na outra.")
+    say(f"Depois de {pairing.MAX_FAILURES} códigos errados o pareamento fecha.")
     try:
         result = window.serve()
     except KeyboardInterrupt:
@@ -505,9 +504,53 @@ def cmd_parear(a) -> None:
         raise Exit(130, "pareamento cancelado") from None
     if result is None:
         raise Exit(1, "ninguém pareou. Rode 'relay parear' de novo pra um código novo")
-    pairing.save_controller(result)
-    say(f"\npronto, {result.controller} pode mandar comandos pra esta máquina.")
-    say("O agente relê o config sozinho. Pra escolher quais comandos ela pode rodar, use a interface.")
+    pairing.save_result(result)
+    say(f"\npronto. {result.controller} e esta máquina agora mandam uma na outra.")
+    say("O agente relê o config sozinho. Pra limitar o que cada uma roda: relay agente permissoes")
+
+
+def cmd_resumo(a) -> None:
+    """O que aparece com `relay` sozinho: quem é esta máquina e com quem ela fala."""
+    import concurrent.futures
+
+    path = paths.config_file()
+    if not path.exists():
+        say("O relay ainda não foi configurado nesta máquina. Rode o instalador: scripts/install.sh")
+        return
+    cfg = config_mod.load(path)
+    say(f"Esta máquina: {cfg.name}\n")
+    names = sorted(set(cfg.machines) | set(cfg.agent.controllers))
+    if not names:
+        say("Ainda não está pareada com nenhuma máquina.")
+        say("Numa máquina rode  relay parear  e na outra  relay parear <nome>")
+        return
+
+    def check(name: str) -> str:
+        if name not in cfg.machines:
+            return "não dá pra mandar nela daqui"
+        try:
+            p = Client(cfg, cfg.machines[name], connect_timeout=3, read_timeout=3).ping()
+        except RelayError as e:
+            return f"offline ({str(e)[:80]})"
+        return f"online, {p.latency_ms:.0f} ms"
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+        status = dict(zip(names, pool.map(check, names), strict=True))
+    say("Pareada com")
+    for name in names:
+        sends = "esta manda nela" if name in cfg.machines else ""
+        receives = "ela manda nesta" if name in cfg.agent.controllers else ""
+        both = " e ".join(x for x in (sends, receives) if x)
+        say(f"  {name}")
+        say(f"      {both}")
+        say(f"      {status[name]}")
+    first = names[0]
+    say("\nComandos mais usados")
+    say(f"  relay listar {first}              comandos que ela aceita")
+    say(f"  relay rodar {first} status        roda um comando lá, com a saída ao vivo")
+    say(f"  relay historico {first}           o que você rodou lá")
+    say("  relay parear                      parear com outra máquina")
+    say("  relay --help                      todos os comandos")
 
 
 def cmd_exemplos(a) -> None:
@@ -525,7 +568,8 @@ def cmd_exemplos(a) -> None:
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="relay", description="Uma máquina roda comandos pré-aprovados na outra.")
     p.add_argument("--versao", action="version", version=f"relay {__version__}")
-    sub = p.add_subparsers(dest="acao", required=True, metavar="ação")
+    sub = p.add_subparsers(dest="acao", metavar="ação")
+    p.set_defaults(func=cmd_resumo)
 
     s = sub.add_parser("init", help="cria o config e os comandos de exemplo")
     s.add_argument("--nome", help="nome desta máquina (padrão: o hostname)")
@@ -609,13 +653,14 @@ def build_parser() -> argparse.ArgumentParser:
     s = sub.add_parser("config", help="mostra o config sem os segredos")
     s.set_defaults(func=cmd_config)
 
-    s = sub.add_parser("parear", help="pareia duas máquinas com um código curto")
+    s = sub.add_parser("parear", help="pareia esta máquina com outra (as duas passam a mandar uma na outra)")
     s.add_argument(
-        "--com", metavar="ENDERECO", help="(na máquina que MANDA) endereço da outra, ex.: cass-dell-g15-5511"
+        "maquina", nargs="?", help="a outra máquina, ou só um pedaço do nome (g15, hp). Sem isso, mostra o código"
     )
+    s.add_argument("--com", help=argparse.SUPPRESS)  # jeito antigo de passar a máquina
     s.add_argument("--porta", type=int, help="porta de pareamento (padrão 47801)")
-    s.add_argument("--tempo", type=float, default=120, help="(na máquina que EXECUTA) segundos de janela aberta")
-    s.add_argument("--escutar", help="(na máquina que EXECUTA) IP pra escutar, se não for o do Tailscale")
+    s.add_argument("--tempo", type=float, default=120, help="segundos que o código vale (padrão 120)")
+    s.add_argument("--escutar", help="IP pra escutar o pareamento, se não for o do Tailscale")
     s.set_defaults(func=cmd_parear)
 
     s = sub.add_parser("exemplos", help="cria (ou atualiza) os comandos de exemplo nesta máquina")

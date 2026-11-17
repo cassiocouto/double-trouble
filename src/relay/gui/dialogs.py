@@ -32,7 +32,7 @@ class PreferencesDialog:
         self.machines_group.set_title("Máquinas que esta controla")
         self.machines_group.set_description("Pra quem esta máquina manda comandos.")
         add_box = Gtk.Box(spacing=6)
-        pair = button("Parear com código", "suggested-action")
+        pair = button("Digitar código", "suggested-action")
         pair.connect("clicked", lambda *_: self.win.show_pairing_controller(self))
         manual = button("Com segredo", "flat")
         manual.set_tooltip_text("Caminho manual: colar o segredo gerado na outra máquina")
@@ -52,7 +52,7 @@ class PreferencesDialog:
         self.agent_page.add(self.this_group)
         self.ctrl_group = Adw.PreferencesGroup()
         self.ctrl_group.set_title("Quem pode controlar esta máquina")
-        let = button("Deixar outra controlar", "suggested-action")
+        let = button("Mostrar código", "suggested-action")
         let.set_tooltip_text("Mostra um código curto pra digitar na outra máquina")
         let.connect("clicked", lambda *_: self.win.show_pairing_agent(self))
         self.ctrl_group.set_header_suffix(let)
@@ -86,7 +86,10 @@ class PreferencesDialog:
             self._add(self.this_group, label("Rode 'relay init' num terminal pra criar o config.", "dim-label"))
             return
         if not cfg.machines:
-            self._add(self.machines_group, label("Nenhuma ainda. Use “Parear com código”.", "dim-label"))
+            self._add(
+                self.machines_group,
+                label("Nenhuma ainda. Pareie com “Digitar código” ou “Mostrar código”.", "dim-label"),
+            )
         for m in cfg.machines.values():
             r = row(m.name, f"{m.address}:{m.port}")
             edit = button("", "flat", icon="document-edit-symbolic", tooltip="Mudar endereço ou porta")
@@ -106,7 +109,9 @@ class PreferencesDialog:
         self._add(self.this_group, row("Pareamento", f"porta {a.pairing_port}"))
         self._add(self.this_group, row("Comandos em paralelo", str(a.max_parallel)))
         if not a.controllers:
-            self._add(self.ctrl_group, label("Ninguém ainda. Use “Deixar outra controlar”.", "dim-label"))
+            self._add(
+                self.ctrl_group, label("Ninguém ainda. Pareie com “Mostrar código” ou “Digitar código”.", "dim-label")
+            )
         for c in a.controllers.values():
             r = row(c.name, self.vm.controller_summary(c))
             perms = button("", "flat", icon="emblem-system-symbolic", tooltip="Escolher quais comandos ela pode rodar")
@@ -275,20 +280,21 @@ class PairControllerDialog:
         self.vm = vm
         self.parent = parent
         d = Adw.Dialog()
-        d.set_title("Parear com código")
+        d.set_title("Digitar o código da outra máquina")
         d.set_content_width(460)
         self.dialog = d
         box = vbox(12)
         box.append(
             label(
-                "Na outra máquina (a que vai executar), abra Configurações → Esta máquina → "
-                "“Deixar outra controlar”, ou rode relay parear. Ela mostra um código de 8 números.",
+                "Na outra máquina, abra Configurações → Esta máquina → “Mostrar código”, "
+                "ou rode relay parear. Ela mostra 8 números. Depois do pareamento, "
+                "as duas máquinas mandam uma na outra.",
                 "dim-label",
             )
         )
         group = Adw.PreferencesGroup()
         self.address = Adw.EntryRow()
-        self.address.set_title("Nome da outra máquina (ex.: cass-dell-g15-5511)")
+        self.address.set_title("Nome da outra máquina (pode ser só um pedaço, como g15)")
         self.port = Adw.SpinRow.new_with_range(1, 65535, 1)
         self.port.set_title("Porta de pareamento")
         self.port.set_value(PORT + 1)
@@ -330,7 +336,7 @@ class PairControllerDialog:
             self.status.set_label(vm.error)
             self.status.add_css_class("error")
         elif vm.paired:
-            self.status.set_label(f"Pronto! Esta máquina agora manda comandos pra {vm.paired}.")
+            self.status.set_label(f"Pronto! Esta máquina e {vm.paired} agora mandam uma na outra.")
             self.status.add_css_class("success")
             self.go.set_label("Fechar")
 
@@ -343,7 +349,7 @@ class PairAgentDialog:
         self.parent = parent
         self._timer = 0
         d = Adw.Dialog()
-        d.set_title("Deixar outra máquina controlar esta")
+        d.set_title("Mostrar código pra parear")
         d.set_content_width(460)
         d.connect("closed", lambda *_: self._closed())
         self.dialog = d
