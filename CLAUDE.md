@@ -4,6 +4,14 @@ Relay roda comandos pré-aprovados de uma máquina na outra, pelo Tailscale.
 Leia o `README.md`, o `docs/SEGURANCA.md` (as 11 regras de segurança) e o
 `DECISIONS.md` antes de mudar algo grande.
 
+## As máquinas
+
+- `cass-hp-elitedesk-800-g6` é o **thinker**: pensa e manda comandos pro gêmeo.
+- `cass-dell-g15-5511` é o **gêmeo**: executa e manda informação pro thinker.
+- Os papéis podem trocar. As duas têm agente e interface e ficam pareadas nas
+  duas direções. Nada no código pode assumir que só uma delas manda.
+- A `cass-dell-brasil` saiu do par. Ela só aparece em dados de teste do v1.
+
 ## Git
 
 - **Branch com nome que diz o que faz.** Nunca um nome aleatório.

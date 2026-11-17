@@ -404,3 +404,25 @@ reorganizar, `docs/...` e `chore/...` pro resto. Quando o trabalho termina e
 os testes passam, o branch é mergeado no `main` (com `--no-ff`, pra ficar
 claro no histórico o que veio junto). A regra está no `CLAUDE.md`, pra valer
 também nas próximas sessões.
+
+## Máquinas novas
+
+**D67. HP como thinker, G15 como gêmeo, nas duas direções.**
+O par agora é `cass-hp-elitedesk-800-g6` (thinker) e `cass-dell-g15-5511`
+(gêmeo), e os papéis podem trocar. Não criei um conceito de "papel" no
+código: o Relay já é simétrico. As duas máquinas instalam agente e interface
+e são pareadas nas duas direções. Quem manda é só quem está usando o
+controlador naquela hora. O gêmeo "manda informação pro thinker" de dois
+jeitos: a saída dos comandos que o thinker roda volta ao vivo, e o gêmeo pode
+rodar comandos no thinker por conta própria.
+
+**D68. `relay agente permissoes`.**
+Com as duas direções abertas, vale poder limitar o que cada uma roda na outra
+sem abrir a interface (a HP pode ficar sem tela). Sem lista, mostra. Com
+lista, troca. Com `*`, libera tudo. Vale na hora, porque o agente relê o
+config sozinho.
+
+**D69. A `cass-dell-brasil` sai do par.**
+Na G15, a migração do v1 traz a brasil junto (estava no config antigo). O
+README manda revogar e remover ela logo depois de migrar, pra não sobrar uma
+confiança antiga com o segredo compartilhado do v1.

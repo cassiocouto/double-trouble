@@ -113,8 +113,8 @@ def test_read_magic_limits():
 
 
 def test_config_roundtrip(tmp_path):
-    cfg = config_mod.default_config("Cass-Dell-Brasil.local")
-    assert cfg.name == "cass-dell-brasil"
+    cfg = config_mod.default_config("Cass-HP-EliteDesk-800-G6.local")
+    assert cfg.name == "cass-hp-elitedesk-800-g6"
     cfg.agent.controllers["g15"] = config_mod.ControllerEntry("g15", os.urandom(32), ["status"], "cass-g15")
     cfg.machines["g15"] = config_mod.MachineEntry("g15", "g15.tail.ts.net", 47800, os.urandom(32))
     path = tmp_path / "relay.json"
@@ -170,10 +170,11 @@ def test_config_rejects_duplicate_keys(tmp_path):
 
 def test_find_machine_partial():
     cfg = config_mod.default_config("a")
-    for n in ("cass-dell-brasil", "cass-dell-g15-5511"):
+    for n in ("cass-hp-elitedesk-800-g6", "cass-dell-g15-5511"):
         cfg.machines[n] = config_mod.MachineEntry(n, n, 1, os.urandom(32))
     assert cfg.find_machine("g15").name == "cass-dell-g15-5511"
-    assert cfg.find_machine("BRASIL").name == "cass-dell-brasil"
+    assert cfg.find_machine("HP").name == "cass-hp-elitedesk-800-g6"
+    assert cfg.find_machine("dell").name == "cass-dell-g15-5511"
     with pytest.raises(ConfigError, match="mais de uma"):
         cfg.find_machine("cass")
     with pytest.raises(ConfigError, match="não conheço"):

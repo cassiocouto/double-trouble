@@ -30,7 +30,6 @@ from .safety import path_problem, read_private_text, write_private
 CONFIG_VERSION = 2
 DEFAULT_PORT = 47800
 TAILSCALE_NETS = ("100.64.0.0/10", "fd7a:115c:a1e0::/48")
-KNOWN_MACHINES = ("cass-dell-brasil", "cass-dell-g15-5511")
 MIN_SECRET_BYTES = 32
 MACHINE_NAME_RE = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
 VERIFY_MODES = ("auto", "sempre", "nunca")

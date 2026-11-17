@@ -429,6 +429,43 @@ def cmd_agente_revogar(a) -> None:
     say(f"{a.nome} não pode mais mandar comandos pra cá (o agente recarrega o config sozinho)")
 
 
+def cmd_agente_permissoes(a) -> None:
+    """Mostra ou muda quais comandos uma máquina pareada pode rodar aqui."""
+    cfg = load_cfg()
+    name = config_mod.normalize_machine_name(a.nome)
+    if name not in cfg.agent.controllers:
+        known = ", ".join(cfg.agent.controllers) or "nenhuma"
+        raise Exit(2, f"'{name}' não está pareada com esta máquina. Pareadas: {known}")
+    if not a.comandos:
+        entry = cfg.agent.controllers[name]
+        allowed = "todos os comandos" if entry.commands is None else ", ".join(entry.commands) or "nenhum comando"
+        say(f"{name} pode rodar aqui: {allowed}")
+        return
+    if a.comandos == ["*"]:
+        chosen = None
+    else:
+        chosen = []
+        for item in a.comandos:
+            for cmd in item.split(","):
+                cmd = cmd.strip()
+                if not cmd:
+                    continue
+                if not commands.valid_name(cmd):
+                    raise Exit(2, f"'{cmd}' não é um nome de comando válido")
+                if cmd not in chosen:
+                    chosen.append(cmd)
+        missing = [c for c in chosen if not (paths.commands_dir() / f"{c}.py").exists()]
+        if missing:
+            warn(f"aviso: ainda não existe aqui: {', '.join(missing)} (vale quando você criar)")
+
+    def change(cfg: config_mod.Config) -> None:
+        cfg.agent.controllers[name].commands = chosen
+
+    config_mod.update(change)
+    shown = "todos os comandos" if chosen is None else ", ".join(chosen) or "nenhum comando"
+    say(f"pronto, {name} agora pode rodar aqui: {shown} (vale na hora)")
+
+
 def cmd_config(a) -> None:
     cfg = load_cfg()
     data = cfg.to_json()
@@ -584,6 +621,10 @@ def build_parser() -> argparse.ArgumentParser:
     m.set_defaults(func=cmd_agente_revogar)
     m = asub.add_parser("listar")
     m.set_defaults(func=cmd_maquinas)
+    m = asub.add_parser("permissoes", help="mostra ou muda quais comandos uma máquina pareada pode rodar aqui")
+    m.add_argument("nome")
+    m.add_argument("comandos", nargs="*", help='nomes dos comandos, ou "*" pra todos (sem nada: só mostra)')
+    m.set_defaults(func=cmd_agente_permissoes)
 
     s = sub.add_parser("config", help="mostra o config sem os segredos")
     s.set_defaults(func=cmd_config)
