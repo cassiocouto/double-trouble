@@ -110,8 +110,11 @@ def run_checks(win) -> list[tuple[str, str | None]]:
                 vm.changed.emit()
             vm.state, vm.message = RunVM.FAILED, "falhou de <exemplo>"
             vm.changed.emit()
-            # Mostra uma imagem de verdade (1x1 PNG) e um arquivo não-imagem.
+            # Mostra uma imagem de verdade (1x1 PNG), alterna o zoom, e um
+            # arquivo não-imagem.
             page._show_artifact(SAMPLE_PNG, True)
+            page.image.zoom_btn.set_active(True)
+            page.image.zoom_btn.set_active(False)
             page._show_artifact(b"%PDF-1.4 arquivo de exemplo", False)
 
         return check

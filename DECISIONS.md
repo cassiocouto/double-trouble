@@ -547,3 +547,10 @@ detecta a sessão: em X11 usa scrot/maim/gnome-screenshot/ImageMagick/ffmpeg
 (silenciosos); em Wayland tenta a API do shell e o grim, e se falhar explica
 que pra print silencioso é preciso usar a sessão "Ubuntu on Xorg". A mensagem
 de erro mostra a sessão e o que instalar.
+
+**D85. Visualizador de imagem maior, com tamanho real.**
+A prévia da imagem era limitada a 320px de altura (o arquivo salvo sempre foi
+na resolução cheia). Agora a imagem fica numa área rolável mais alta, a tela
+de executar é mais larga (1200px), e um botão alterna entre "caber na largura"
+e "tamanho real" (100%, com rolagem nos dois sentidos). O 100% é o que vai
+servir pra selecionar uma região pixel a pixel no próximo passo.
