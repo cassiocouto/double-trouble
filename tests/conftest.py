@@ -16,7 +16,6 @@ def isolated_dirs(tmp_path, monkeypatch):
     monkeypatch.setenv("RELAY_DIR", str(base))
     monkeypatch.setenv("RELAY_STATE_DIR", str(tmp_path / "estado"))
     monkeypatch.setenv("RELAY_DATA_DIR", str(tmp_path / "dados"))
-    monkeypatch.setenv("RELAY_LEGACY_DIR", str(tmp_path / "ponte-v1"))
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
     # Comandos rodam num processo filho e importam relay.command, como no venv instalado.
     src = str(Path(__file__).resolve().parents[1] / "src")

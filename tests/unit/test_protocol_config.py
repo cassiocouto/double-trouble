@@ -239,7 +239,7 @@ def test_config_dir_must_not_be_writable_by_others(tmp_path):
 
 
 def test_duplicate_key_error_does_not_echo_the_key():
-    from relay.core.legacy import loads_strict
+    from relay.core.strictjson import loads_strict
 
     with pytest.raises(ValueError) as e:
         loads_strict('{"segredo-gigante": 1, "segredo-gigante": 2}')

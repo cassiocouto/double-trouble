@@ -10,7 +10,7 @@ Leia o `README.md`, o `docs/SEGURANCA.md` (as 11 regras de segurança) e o
 - `cass-dell-g15-5511` é o **gêmeo**: executa e manda informação pro thinker.
 - Os papéis podem trocar. As duas têm agente e interface e ficam pareadas nas
   duas direções. Nada no código pode assumir que só uma delas manda.
-- A `cass-dell-brasil` saiu do par. Ela só aparece em dados de teste do v1.
+- A `cass-dell-brasil` saiu do par.
 
 ## Git
 
@@ -46,13 +46,11 @@ Leia o `README.md`, o `docs/SEGURANCA.md` (as 11 regras de segurança) e o
 - Rode como usuário comum. O agente se recusa a rodar como root. Num
   container onde você é root, use
   `setpriv --reuid=65534 --regid=65534 --clear-groups env HOME=/tmp/x .venv/bin/pytest -p no:cacheprovider`.
-- Testes **nunca** usam o `~/.config/relay` (nem o `~/.config/ponte`) de
-  verdade: o `tests/conftest.py` aponta tudo pra pastas temporárias.
+- Testes **nunca** usam o `~/.config/relay` de verdade: o `tests/conftest.py` aponta tudo pra pastas temporárias.
 - Testes **nunca** rodam comandos que mexem na tela (`travar_tela`,
   `notificar`, `abrir_url`). Use comandos falsos criados pelo próprio teste.
 
 ## Perguntar antes
 
 Pergunte à Cass antes de: rodar qualquer coisa com `sudo`, acessar outra
-máquina por SSH, ou apagar/sobrescrever o `~/.config/relay` ou o
-`~/.config/ponte` de verdade.
+máquina por SSH, ou apagar/sobrescrever o `~/.config/relay` de verdade.

@@ -30,19 +30,6 @@ def config_file() -> Path:
     return base_dir() / "relay.json"
 
 
-def legacy_dir() -> Path:
-    """Pasta do script antigo (ponte.py v1). Só a migração lê daqui, e nunca escreve."""
-    return _env_path("RELAY_LEGACY_DIR") or Path.home() / ".config" / "ponte"
-
-
-def legacy_config_file() -> Path:
-    return legacy_dir() / "config.json"
-
-
-def legacy_commands_dir() -> Path:
-    return legacy_dir() / "comandos"
-
-
 def state_dir() -> Path:
     """Estado do agente (auditoria). Padrão ~/.local/state/relay."""
     explicit = _env_path("RELAY_STATE_DIR")

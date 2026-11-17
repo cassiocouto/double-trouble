@@ -74,3 +74,16 @@ def test_agent_honors_the_new_limit(agent, monkeypatch):
     assert h.client().run("status").text_stdout == "ok\n"
     with pytest.raises(RemoteError, match="não deixa"):
         h.client().run("travar")
+
+
+def test_cli_refuses_secret_on_argv(base, capsys):
+    config_mod.save(config_mod.default_config("a"))
+    for argv in (
+        ["maquina", "adicionar", "g15", "--segredo", "ab" * 32],
+        ["agente", "autorizar", "g15", "--segredo", "ab" * 32],
+    ):
+        with pytest.raises(SystemExit) as e:
+            main(argv)
+        assert e.value.code == 2
+        assert "ps" in capsys.readouterr().err
+    assert config_mod.load().machines == {}

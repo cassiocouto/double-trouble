@@ -77,8 +77,7 @@ de usuário (`systemctl --user`). Testes: `test_inv6_refuses_root`,
 
 **7. Dono e permissões.**
 Pasta de config, pasta de comandos e arquivo de comando: do seu usuário e sem
-escrita pra grupo/outros. Arquivo com segredo (`relay.json`, `config.json`
-do v1): modo 600 e não pode ser link. Se o `relay.json` ficar inseguro ou
+escrita pra grupo/outros. Arquivo com segredo (`relay.json`): modo 600 e não pode ser link. Se o `relay.json` ficar inseguro ou
 quebrado com o agente rodando, ele **recusa tudo** até alguém consertar
 (falha fechada). Auditoria e histórico são 600 em pastas 700.
 Testes: `test_inv7_*`, `test_config_requires_mode_600`.
@@ -195,12 +194,6 @@ controlar a outra direção (que tem outro segredo).
 O que fazer: na máquina que executa, revogue o controlador
 (`relay agente revogar <nome>` ou o botão de lixeira na interface). Vale na
 hora, sem reiniciar nada.
-
-Atenção com config migrado do v1: o v1 usava **um** segredo pras duas
-direções. A migração mantém isso pra nada parar de funcionar, e a chave
-derivada impede reflexão de pedidos entre direções. Mas quem pegar uma das
-máquinas tem o segredo das duas direções. Depois de migrar, **pareie de novo
-nas duas direções**.
 
 ## Outro usuário local
 

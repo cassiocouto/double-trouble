@@ -24,10 +24,10 @@ Casos de versão diferente:
 
 | O agente recebe        | O agente faz                                      | O controlador mostra                    |
 |------------------------|---------------------------------------------------|-----------------------------------------|
-| `{` (cliente v1)       | manda uma linha JSON v1 com o erro e fecha        | o ponte.py v1 mostra o erro             |
+| `{` (cliente v1)       | manda uma linha JSON v1 com o erro e fecha        | a versão antiga (v1) mostra o erro      |
 | `RELAY/<outra>\n`      | manda `RELAY/2\n` e fecha                         | "fala outra versão do protocolo"        |
 | qualquer outra coisa   | fecha sem mandar nada                             | —                                       |
-| (agente é o v1)        | o v1 não entende e fecha                          | "pode ser o ponte.py antigo (v1)"       |
+| (agente é o v1)        | o v1 não entende e fecha                          | "pode ser uma versão antiga (v1)"       |
 
 ## 3. Frames
 
@@ -56,8 +56,7 @@ K = HMAC-SHA256(segredo, JSON(["relay/2", C, A]))
 `JSON(...)` é `json.dumps` com `ensure_ascii=True`. A lista tira qualquer
 ambiguidade entre nomes (`"ab","c"` ≠ `"a","bc"`).
 
-Por que derivar? Mesmo que alguém use o mesmo segredo nas duas direções (o
-config migrado do v1 faz isso), `K(C→A)` ≠ `K(A→C)`. Um pedido de uma direção
+Por que derivar? Mesmo que alguém use o mesmo segredo nas duas direções, `K(C→A)` ≠ `K(A→C)`. Um pedido de uma direção
 não vale na outra.
 
 ## 5. Assinatura

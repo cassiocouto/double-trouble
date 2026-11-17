@@ -58,21 +58,9 @@ git clone -b main https://github.com/cassiocouto/double-trouble.git ~/src/relay
 
 Ele cria um venv em `~/.local/share/relay/venv`, instala o agente como
 serviço do usuário, coloca o Relay no menu de aplicativos e cria os comandos
-de exemplo. Se achar o `ponte.py` antigo, ele mostra o plano de migração e
-pergunta antes (veja "Vindo do ponte.py v1").
+de exemplo.
 
 Opções: `--agente` (só o lado que executa), `--gui` (só a interface).
-
-**Na G15, se ela tinha o `ponte.py` antigo:** a migração traz junto a
-`cass-dell-brasil`, que não faz mais parte do par. Tire ela depois de migrar:
-
-```bash
-relay agente revogar cass-dell-brasil
-```
-
-```bash
-relay maquina remover cass-dell-brasil
-```
 
 **3. Firewall.** Se o `ufw` estiver ligado, o instalador mostra estas duas
 linhas. Elas liberam o relay só na interface do Tailscale:
@@ -334,7 +322,7 @@ veja os logs (acima). Se o `ufw` estiver ligado, libere as portas (veja
 
 **"fechou a conexão sem responder".** O IP de quem chamou está fora da lista
 `permitidos` do agente, o config do agente está com problema (veja os logs
-lá), ou lá ainda está rodando o `ponte.py` antigo.
+lá), ou lá ainda está rodando uma versão antiga.
 
 **"recusou sem assinar" / "não aceitou esta máquina".** As duas máquinas não
 estão pareadas nessa direção (ou foram revogadas). Pareie de novo com
@@ -369,43 +357,6 @@ Normalmente falta pacote do apt (veja "Instalar", passo 1).
 **Auditoria.** Tudo que o agente recusou ou rodou fica em
 `~/.local/state/relay/auditoria.jsonl` (quem, o quê, parâmetros, código,
 duração).
-
----
-
-## Vindo do ponte.py v1
-
-O instalador detecta o `ponte.service` antigo e pergunta. Ou rode:
-
-```bash
-relay migrar
-```
-
-Ele mostra o plano e pergunta antes. O que acontece:
-
-- o `ponte.service` antigo é parado e desabilitado (o arquivo fica);
-- o `~/.config/ponte/config.json` do v1 **não muda**, e ganha um backup do lado;
-- o Relay grava `~/.config/relay/relay.json` com o mesmo nome, porta, máquinas e
-  segredo;
-- os comandos de `~/.config/ponte/comandos` são **copiados** pra
-  `~/.config/relay/comandos`. Os originais ficam onde estão. Os comandos antigos
-  continuam funcionando, inclusive os que leem `PONTE_DE`.
-
-Depois disso, edite os comandos na pasta nova, `~/.config/relay/comandos`.
-
-**Depois de migrar, pareie de novo** nas duas direções. O v1 usava o mesmo
-segredo pras duas, e o v2 prefere um por direção.
-
-O v1 e o Relay não conversam entre si. Atualize as duas máquinas.
-
-Pra voltar pro v1:
-
-```bash
-systemctl --user disable --now relay-agent
-```
-
-```bash
-systemctl --user enable --now ponte.service
-```
 
 ---
 

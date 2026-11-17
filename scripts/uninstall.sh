@@ -68,6 +68,3 @@ if [[ $everything == 1 ]]; then
 else
   say "config e comandos continuam em $CONFIG_DIR"
 fi
-say ""
-say "Se você tinha o ponte.py v1 e quer voltar pra ele:"
-say "  systemctl --user enable --now ponte.service"

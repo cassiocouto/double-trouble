@@ -61,8 +61,6 @@ def load_cfg() -> config_mod.Config:
     path = paths.config_file()
     if not path.exists():
         hint = "rode 'relay init'"
-        if paths.legacy_config_file().exists():
-            hint = "achei o config do v1, rode 'relay migrar'"
         raise ConfigError(f"não achei {path}, {hint}")
     return config_mod.load(path)
 
@@ -131,8 +129,6 @@ def cmd_init(a) -> None:
     say("\nPróximo passo: parear com a outra máquina")
     say("  na máquina que vai EXECUTAR     relay parear")
     say("  na máquina que vai MANDAR       relay parear --com <nome-da-outra>")
-    if paths.legacy_config_file().exists():
-        say("\nAchei o config do v1. Pra trazer segredo e máquinas de lá: relay migrar")
 
 
 # --------------------------------------------------------------------------
@@ -514,22 +510,6 @@ def cmd_parear(a) -> None:
     say("O agente relê o config sozinho. Pra escolher quais comandos ela pode rodar, use a interface.")
 
 
-def cmd_migrar(a) -> None:
-    from . import migrate
-
-    plan = migrate.make_plan()
-    say("Migração do ponte.py v1 pro v2\n")
-    for line in migrate.describe(plan):
-        say(f"  {line}")
-    say("")
-    if not confirm("Fazer a migração?", a.sim):
-        raise Exit(1, "nada foi mudado")
-    for line in migrate.apply(plan, force=a.forcar, stop_v1=not a.manter_v1):
-        say(f"  {line}")
-    say("\npronto. Agora instale e ligue o agente novo com scripts/install.sh")
-    say("(ou, se já instalou: systemctl --user enable --now relay-agent)")
-
-
 def cmd_exemplos(a) -> None:
     if a.atualizar and not confirm(
         f"Trocar os exemplos em {paths.commands_dir()} pelas versões novas? (os atuais viram .bak)", a.sim
@@ -637,12 +617,6 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--tempo", type=float, default=120, help="(na máquina que EXECUTA) segundos de janela aberta")
     s.add_argument("--escutar", help="(na máquina que EXECUTA) IP pra escutar, se não for o do Tailscale")
     s.set_defaults(func=cmd_parear)
-
-    s = sub.add_parser("migrar", help="traz o config do ponte.py v1 e desliga o serviço antigo")
-    s.add_argument("--sim", action="store_true", help="não pergunta antes")
-    s.add_argument("--forcar", action="store_true", help="recria o relay.json se já existir (vira backup)")
-    s.add_argument("--manter-v1", action="store_true", help="não para nem desabilita o ponte.service antigo")
-    s.set_defaults(func=cmd_migrar)
 
     s = sub.add_parser("exemplos", help="cria (ou atualiza) os comandos de exemplo nesta máquina")
     s.add_argument("--atualizar", action="store_true", help="troca os existentes (os atuais viram .bak)")

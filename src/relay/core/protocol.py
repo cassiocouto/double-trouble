@@ -26,7 +26,7 @@ from collections import OrderedDict
 from dataclasses import dataclass, field
 
 from .errors import AuthError, ProtocolError
-from .legacy import loads_strict
+from .strictjson import loads_strict
 
 PROTOCOL = 2
 MAGIC = b"RELAY/2\n"
@@ -55,9 +55,8 @@ _HEADER = struct.Struct(">I")
 def derive_key(secret: bytes, controller: str, agent: str) -> bytes:
     """Chave da direção controlador -> agente.
 
-    Mesmo que alguém use o mesmo segredo nas duas direções (config migrado do
-    v1), a chave de A -> B é diferente da de B -> A. Um pedido de uma direção
-    não serve na outra.
+    Mesmo que alguém use o mesmo segredo nas duas direções, a chave de A -> B
+    é diferente da de B -> A. Um pedido de uma direção não serve na outra.
     """
     label = json.dumps(["relay/2", controller, agent], ensure_ascii=True).encode()
     return hmac.new(secret, label, hashlib.sha256).digest()

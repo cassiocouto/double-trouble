@@ -4,12 +4,10 @@
 #   scripts/install.sh            agente e interface (padrão)
 #   scripts/install.sh --agente   só o agente (o lado que executa)
 #   scripts/install.sh --gui      só a interface (o lado que manda)
-#   scripts/install.sh --sim      não pergunta nada (aceita a migração do v1)
 #
 # O que ele faz
 #   * venv em ~/.local/share/relay/venv (com --system-site-packages, pra ver o PyGObject)
 #   * links em ~/.local/bin (relay, relay-agent, relay-gui)
-#   * migra o ponte.py v1, se achar (pergunta antes)
 #   * agente: ~/.config/systemd/user/relay-agent.service, habilitado e ligado
 #   * interface: ~/.local/share/applications/dev.cass.Relay.desktop e o ícone
 #
@@ -27,20 +25,17 @@ UNIT_DIR="$HOME/.config/systemd/user"
 APPS_DIR="$DATA_HOME/applications"
 ICON_DIR="$DATA_HOME/icons/hicolor/scalable/apps"
 CONFIG_DIR="${RELAY_DIR:-$HOME/.config/relay}"
-LEGACY_DIR="${RELAY_LEGACY_DIR:-$HOME/.config/ponte}"  # onde o ponte.py v1 guardava as coisas
 
 want_agent=0
 want_gui=0
-assume_yes=0
 recreate=0
 for arg in "$@"; do
   case "$arg" in
     --agente) want_agent=1 ;;
     --gui) want_gui=1 ;;
-    --sim) assume_yes=1 ;;
     --recriar-venv) recreate=1 ;;
     -h|--help) sed -n '2,20p' "$0"; exit 0 ;;
-    *) echo "opção desconhecida: $arg (use --agente, --gui, --sim ou --recriar-venv)" >&2; exit 2 ;;
+    *) echo "opção desconhecida: $arg (use --agente, --gui ou --recriar-venv)" >&2; exit 2 ;;
   esac
 done
 if [[ $want_agent == 0 && $want_gui == 0 ]]; then
@@ -154,16 +149,6 @@ step "Config em $CONFIG_DIR"
 RELAY="$VENV/bin/relay"
 if [[ -f "$CONFIG_DIR/relay.json" ]]; then
   say "já existe $CONFIG_DIR/relay.json, não mexo"
-elif [[ -f "$LEGACY_DIR/config.json" ]]; then
-  say "Achei o config do ponte.py v1 em $LEGACY_DIR."
-  if [[ $assume_yes == 1 ]]; then
-    "$RELAY" migrar --sim
-  elif [[ -t 0 ]]; then
-    # Mostra o plano e pergunta antes de mudar qualquer coisa.
-    "$RELAY" migrar || say "Pulei a migração. Rode depois:  relay migrar"
-  else
-    say "Pulei a migração (sem terminal pra perguntar). Rode depois:  relay migrar"
-  fi
 else
   "$RELAY" init
 fi

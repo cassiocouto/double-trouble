@@ -255,7 +255,7 @@ def test_inv3_wrong_destination(agent):
 
 
 def test_inv3_reflection_between_directions(agent):
-    """Mesmo segredo nas duas direções (migração do v1): pedido de A->B não vale em B->A."""
+    """Mesmo segredo nas duas direções: pedido de A->B não vale em B->A."""
     h = agent(name="b", controller="a")
     shared = h.secret
     # Alguém captura um pedido de B pra A (assinado com a chave B->A) e manda pro B.
@@ -837,7 +837,7 @@ def test_future_client_sees_our_version(agent):
 
 
 def test_v2_client_against_v1_server(tmp_path):
-    """O cliente v2 explica que do outro lado pode estar o ponte.py antigo."""
+    """O cliente v2 explica que do outro lado pode estar uma versão antiga."""
     from relay.core.errors import ProtocolError
 
     srv = socket.socket()
@@ -855,7 +855,7 @@ def test_v2_client_against_v1_server(tmp_path):
         srv.close()
 
     threading.Thread(target=v1_like, daemon=True).start()
-    with pytest.raises(ProtocolError, match="ponte.py antigo"):
+    with pytest.raises(ProtocolError, match="versão antiga"):
         fake_client(srv.getsockname()[1], SECRET).ping()
 
 
