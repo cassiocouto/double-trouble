@@ -144,3 +144,26 @@ def test_uninstall_everything_asks(home):
     assert (cfg_dir / "x").exists()
     r = run("uninstall.sh", env, "--tudo", "--sim")
     assert not cfg_dir.exists()
+
+
+def test_reinstall_refreshes_examples_without_touching_config(home):
+    """Rodar o install.sh de novo traz exemplos novos, sem mexer no config nem nos meus comandos."""
+    home, env, _ = home
+    r = run("install.sh", env, "--agente")
+    assert r.returncode == 0, r.stdout + r.stderr
+    cfg_dir = home / ".config" / "relay"
+    cfg_before = (cfg_dir / "relay.json").read_bytes()
+
+    # simulo: um comando meu, e um exemplo que ainda não tenho
+    mine = cfg_dir / "comandos" / "meu.py"
+    mine.write_text("print('meu')\n")
+    os.chmod(mine, 0o600)
+    (cfg_dir / "comandos" / "screenshot.py").unlink()
+
+    r = run("install.sh", env, "--agente")
+    assert r.returncode == 0, r.stdout + r.stderr
+    # o exemplo que faltava voltou
+    assert (cfg_dir / "comandos" / "screenshot.py").exists()
+    # o meu comando ficou intacto e o config não mudou (nada de re-parear)
+    assert mine.read_text() == "print('meu')\n"
+    assert (cfg_dir / "relay.json").read_bytes() == cfg_before
