@@ -537,3 +537,13 @@ de garantir o config, sem tocar nos comandos que você já tem nem no config
 (nada de re-parear). `git pull && ./scripts/install.sh` basta. O
 `relay exemplos` continua existindo pra quem quer rodar só isso, e o
 `--atualizar` troca os antigos pelas versões novas.
+
+**D84. Print silencioso só em X11; no Wayland o comando explica.**
+A API de screenshot do GNOME (`org.gnome.Shell.Screenshot`) é bloqueada pra
+programas de fora no GNOME novo em Wayland ("Screenshot is not allowed"), e o
+portal pede confirmação. Não existe print sem nenhum aviso pra um programa de
+fora em Wayland, por decisão de segurança do próprio Wayland. Então o comando
+detecta a sessão: em X11 usa scrot/maim/gnome-screenshot/ImageMagick/ffmpeg
+(silenciosos); em Wayland tenta a API do shell e o grim, e se falhar explica
+que pra print silencioso é preciso usar a sessão "Ubuntu on Xorg". A mensagem
+de erro mostra a sessão e o que instalar.
