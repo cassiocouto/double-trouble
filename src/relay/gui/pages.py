@@ -16,7 +16,19 @@ from gi.repository import Adw, GLib, GObject, Gtk  # noqa: E402
 from . import text  # noqa: E402
 from .history import Entry  # noqa: E402
 from .viewmodels import CommandsVM, HistoryVM, MachinesVM, RunVM  # noqa: E402
-from .widgets import DEFAULT_ICON, FormView, OutputView, button, copy_to_clipboard, label, page, row, scrolled, vbox  # noqa: E402
+from .widgets import (  # noqa: E402
+    DEFAULT_ICON,
+    FormView,
+    ImageView,
+    OutputView,
+    button,
+    copy_to_clipboard,
+    label,
+    page,
+    row,
+    scrolled,
+    vbox,
+)
 
 if TYPE_CHECKING:
     from .window import MainWindow
@@ -277,6 +289,11 @@ class RunPage:
         box.append(out_head)
         box.append(self.output.frame)
 
+        # Imagem (ou arquivo) que o comando devolver. Fica escondida até chegar uma.
+        self.image = ImageView(self.win)
+        self.image.container.set_visible(False)
+        box.append(self.image.container)
+
         self.page = page(c["nome"], scrolled(box, max_width=900))
         self.page.connect("hidden", lambda *_: self._stop_ticker())
 
@@ -285,9 +302,16 @@ class RunPage:
         vm.output_cleared.connect(self.output.clear)
         vm.errors_changed.connect(lambda: self.form.show_errors(self.vm.errors))
         vm.confirm_requested.connect(self._confirm)
+        vm.artifact_ready.connect(self._show_artifact)
         for stream, chunk in vm.output:
             self.output.append(stream, chunk)
+        if vm.artifact is not None:
+            self._show_artifact(vm.artifact, vm.artifact_is_image)
         self.refresh()
+
+    def _show_artifact(self, data: bytes, is_image: bool) -> None:
+        self.image.container.set_visible(True)
+        self.image.show(data, is_image, suggested_name=self.vm.command["nome"])
 
     def _copy(self, *_):
         copy_to_clipboard(self.page, self.vm.output_text())

@@ -10,10 +10,12 @@ from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
+from .execute import Artifact, read_artifact
 from .runner import RunResult, RunSpec, run_process
 
 KEEP_FINISHED = 50
 MAX_CHUNK_CHARS = 32 * 1024
+MAX_ARTIFACT_MEMORY = 64 * 1024 * 1024  # soma dos artefatos guardados na memória, entre todos os jobs
 
 RUNNING = "rodando"
 OK = "ok"
@@ -25,6 +27,14 @@ ERROR = "erro"
 
 class Busy(Exception):
     """Limite de jobs em paralelo atingido."""
+
+
+def _cleanup_dir(path: str | None) -> None:
+    if not path:
+        return
+    import shutil
+
+    shutil.rmtree(path, ignore_errors=True)
 
 
 @dataclass
@@ -43,6 +53,8 @@ class Job:
     cancel_event: threading.Event = field(default_factory=threading.Event)
     cond: threading.Condition = field(default_factory=threading.Condition)
     _sealed: int = 0
+    artifact: Artifact | None = None  # imagem/PDF etc. que o comando escreveu
+    artifact_error: str | None = None  # motivo de não ter artefato (grande demais, link...)
 
     # -- saída ------------------------------------------------------------
     def append(self, stream: str, text: str) -> None:
@@ -107,6 +119,14 @@ class Job:
         out["cancelado"] = self.state == CANCELLED
         if r and r.erro:
             out["erro"] = r.erro
+        if self.artifact is not None:
+            out["artefato"] = {
+                "tipo": self.artifact.kind.tipo,
+                "imagem": self.artifact.kind.imagem,
+                "bytes": len(self.artifact.data),
+            }
+        if self.artifact_error:
+            out["artefato_erro"] = self.artifact_error
         return out
 
 
@@ -139,8 +159,14 @@ class JobManager:
         params: dict | None,
         args: list[str],
         on_spawned: Callable[[], None] | None = None,
+        artifact_file: str | None = None,
+        artifact_dir: str | None = None,
     ) -> Job:
-        """Começa o job numa thread própria. Levanta Busy se estiver no limite."""
+        """Começa o job numa thread própria. Levanta Busy se estiver no limite.
+
+        artifact_file é onde o comando pode escrever uma imagem/PDF que volta
+        pro controlador. artifact_dir é a pasta temporária a apagar no fim.
+        """
         job = Job(
             id=secrets.token_hex(8),
             controller=controller,
@@ -165,6 +191,12 @@ class JobManager:
                 result = RunResult(codigo=None, erro=f"erro interno rodando o comando ({e!r})")
             finally:
                 spawned.set()
+            # Lê o arquivo de saída se o comando rodou até o fim (mesmo saindo com
+            # código != 0). Em timeout ou cancelamento o arquivo pode estar pela
+            # metade, então nem olha.
+            if artifact_file and not result.erro and not result.estourou_tempo and not result.cancelado:
+                self._read_artifact(job, artifact_file)
+            _cleanup_dir(artifact_dir)
             self._finish(job, result)
 
         t = threading.Thread(target=work, name=f"job-{job.id}", daemon=True)
@@ -177,6 +209,29 @@ class JobManager:
         if on_spawned:
             on_spawned()
         return job
+
+    def _read_artifact(self, job: Job, path: str) -> None:
+        try:
+            job.artifact = read_artifact(path)
+        except ValueError as e:
+            job.artifact_error = str(e)
+        except Exception as e:  # nada no artefato pode derrubar o job
+            job.artifact_error = f"não consegui ler o arquivo de saída ({e!r})"
+        if job.artifact is not None:
+            self._bound_artifact_memory(job)
+
+    def _bound_artifact_memory(self, new: Job) -> None:
+        """Mantém a soma dos artefatos guardados abaixo do teto, soltando os mais velhos."""
+        with self._lock:
+            jobs = [new, *(j for d in self._finished.values() for j in d if j.artifact is not None and j is not new)]
+            total = 0
+            for job in jobs:
+                if job.artifact is None:
+                    continue
+                total += len(job.artifact.data)
+                if total > MAX_ARTIFACT_MEMORY and job is not new:
+                    job.artifact = None
+                    job.artifact_error = "a imagem saiu da memória do agente (rode de novo)"
 
     def _finish(self, job: Job, result: RunResult) -> None:
         if result.erro:

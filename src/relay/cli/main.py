@@ -20,6 +20,7 @@ import sys
 import threading
 import time
 from importlib import resources
+from pathlib import Path
 
 from .. import __version__
 from ..core import commands, paths
@@ -300,9 +301,32 @@ def stream_run(c: Client, a, start) -> None:
     t.join()
     if "error" in box:
         raise box["error"]
+    outcome = box.get("outcome")
+    if outcome is not None and outcome.artifact is not None:
+        save_artifact(outcome, a)
     if a.sem_esperar and result is None:
         return
     finish_result(result)
+
+
+def save_artifact(outcome, a) -> None:
+    """Salva a imagem/PDF que o comando devolveu, num arquivo escolhido ou automático."""
+    from ..core.media import sniff
+
+    kind = sniff(outcome.artifact)
+    dest = getattr(a, "salvar", None)
+    if dest:
+        path = Path(dest).expanduser()
+        if path.is_dir():
+            path = path / f"{a.comando}-{time.strftime('%Y%m%d-%H%M%S')}{kind.extensao}"
+    else:
+        path = Path.cwd() / f"{a.comando}-{time.strftime('%Y%m%d-%H%M%S')}{kind.extensao}"
+    try:
+        path.write_bytes(outcome.artifact)
+    except OSError as e:
+        warn(f"não consegui salvar a imagem em {path} ({e})")
+        return
+    say(f"\narquivo salvo em {path} ({len(outcome.artifact) // 1024} KiB)")
 
 
 def finish_result(result: dict | None) -> None:
@@ -594,6 +618,7 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("-p", "--param", action="append", default=[], metavar="NOME=VALOR")
     s.add_argument("--sim", action="store_true", help="confirma sem perguntar")
     s.add_argument("--sem-esperar", action="store_true", help="só inicia o job e mostra o id")
+    s.add_argument("--salvar", metavar="ARQUIVO", help="onde salvar a imagem/arquivo que o comando devolver")
     s.set_defaults(func=cmd_rodar)
 
     s = sub.add_parser("status", help="mostra um job (e acompanha com --seguir)")

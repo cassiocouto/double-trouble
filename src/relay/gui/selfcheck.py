@@ -8,6 +8,7 @@ transferência.
 
 from __future__ import annotations
 
+import base64
 import time
 import traceback
 from collections.abc import Callable
@@ -21,6 +22,11 @@ from gi.repository import Adw, Gdk, Gio, GObject  # noqa: E402
 from .history import Entry  # noqa: E402
 from .pages import CommandsPage, HistoryEntryPage, HistoryPage, RunPage  # noqa: E402
 from .viewmodels import CommandsVM, PairAgentVM, PairControllerVM, RunVM  # noqa: E402
+
+# PNG 1x1 de verdade, pra o Gdk.Texture conseguir carregar na checagem.
+SAMPLE_PNG = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+)
 
 SAMPLE_COMMANDS = [
     {"nome": "status", "descricao": "Mostra memória e disco.", "categoria": "Sistema", "icone": "computer-symbolic"},
@@ -104,6 +110,9 @@ def run_checks(win) -> list[tuple[str, str | None]]:
                 vm.changed.emit()
             vm.state, vm.message = RunVM.FAILED, "falhou de <exemplo>"
             vm.changed.emit()
+            # Mostra uma imagem de verdade (1x1 PNG) e um arquivo não-imagem.
+            page._show_artifact(SAMPLE_PNG, True)
+            page._show_artifact(b"%PDF-1.4 arquivo de exemplo", False)
 
         return check
 

@@ -121,6 +121,7 @@ def test_install_fresh_agent_only(home):
         "notificar.py",
         "travar_tela.py",
         "abrir_url.py",
+        "screenshot.py",
     }
     assert not (home / ".local" / "share" / "applications" / "dev.cass.Relay.desktop").exists()
 

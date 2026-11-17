@@ -523,3 +523,42 @@ def test_pairing_agent_vm_without_tailscale(tmp_path):
     vm = PairAgentVM(FakeLoop().dispatch, SettingsVM(path), find_ip=lambda: None)
     vm.start()
     assert vm.state == PairAgentVM.FAILED and "Tailscale" in vm.message
+
+
+WRITE_IMG = (
+    "import os\n"
+    'open(os.environ["RELAY_OUTPUT_FILE"], "wb").write(b"\\x89PNG\\r\\n\\x1a\\n" + b"imagem de teste" * 3)\n'
+    'print("ok")\n'
+)
+
+
+def test_run_captures_artifact_and_emits(ctx, tmp_path):
+    _, loop, _, _ = ctx
+    run, _ = make_run(ctx, "tela", WRITE_IMG, tmp_path)
+    got = []
+    run.artifact_ready.connect(lambda data, is_image: got.append((data, is_image)))
+    run.request_run({})
+    loop.pump(lambda: run.state == RunVM.DONE)
+    assert run.artifact.startswith(b"\x89PNG")
+    assert run.artifact_is_image is True
+    assert got and got[0][0] == run.artifact and got[0][1] is True
+
+
+def test_run_without_artifact_emits_nothing(ctx, tmp_path):
+    _, loop, _, _ = ctx
+    run, _ = make_run(ctx, "semimg", "print('nada')\n", tmp_path)
+    got = []
+    run.artifact_ready.connect(lambda *a: got.append(a))
+    run.request_run({})
+    loop.pump(lambda: run.state == RunVM.DONE)
+    assert run.artifact is None and got == []
+
+
+def test_run_saves_artifact_to_file(ctx, tmp_path):
+    _, loop, _, _ = ctx
+    run, _ = make_run(ctx, "tela", WRITE_IMG, tmp_path)
+    run.request_run({})
+    loop.pump(lambda: run.state == RunVM.DONE)
+    dest = tmp_path / "saida.png"
+    run.save_artifact(dest)
+    assert dest.read_bytes() == run.artifact
