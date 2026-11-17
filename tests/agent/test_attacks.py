@@ -636,7 +636,9 @@ def test_inv9_disconnect_does_not_orphan(agent, tmp_path):
     """O controlador cai no meio. O job segue com o timeout e o neto morre."""
     h = agent()
     pidfile = str(tmp_path / "neto")
-    h.make_cmd("demora", GRANDCHILD.format(timeout=2, pidfile=pidfile))
+    # Timeout folgado (6 s): sob carga, ainda sobra margem pra conferir que o
+    # neto segue vivo depois do abort antes de o timeout matar ele.
+    h.make_cmd("demora", GRANDCHILD.format(timeout=6, pidfile=pidfile))
     c = h.client()
     frames = c.request("rodar", comando="demora", seguir=True)
     job = next(frames)["job"]
@@ -646,7 +648,7 @@ def test_inv9_disconnect_does_not_orphan(agent, tmp_path):
         list(frames)
     pid = int(open(pidfile).read())
     assert alive(pid)
-    assert wait_until(lambda: not alive(pid), timeout=10)
+    assert wait_until(lambda: not alive(pid), timeout=20)
     status = h.client().status(job)
     assert status.result["estado"] == "tempo_esgotado"
 

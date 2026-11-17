@@ -294,7 +294,7 @@ class RunPage:
         self.image.container.set_visible(False)
         box.append(self.image.container)
 
-        self.page = page(c["nome"], scrolled(box, max_width=900))
+        self.page = page(c["nome"], scrolled(box, max_width=1200))
         self.page.connect("hidden", lambda *_: self._stop_ticker())
 
         vm.changed.connect(self.refresh)

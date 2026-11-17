@@ -259,6 +259,7 @@ class ImageView:
         self.win = win
         self.data = b""
         self.name = "arquivo"
+        self.full_size = False  # False = cabe na largura, True = tamanho real (rola)
         self.container = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
         self.container.set_margin_top(6)
         head = Gtk.Box(spacing=6)
@@ -267,16 +268,26 @@ class ImageView:
         spacer = Gtk.Box()
         spacer.set_hexpand(True)
         head.append(spacer)
+        self.zoom_btn = Gtk.ToggleButton(label="Tamanho real")
+        self.zoom_btn.add_css_class("flat")
+        self.zoom_btn.set_tooltip_text("Ver em 100% (rola pra ver tudo) ou caber na largura")
+        self.zoom_btn.connect("toggled", self._toggle_zoom)
+        head.append(self.zoom_btn)
         save = button("Salvar…", "flat")
         save.connect("clicked", self._save)
         head.append(save)
         self.container.append(head)
+
         self.picture = Gtk.Picture()
         self.picture.set_can_shrink(True)
         self.picture.set_content_fit(Gtk.ContentFit.CONTAIN)
-        self.picture.set_size_request(-1, 320)
+        # Área rolável e alta, pra um print caber de verdade. Em 100% os dois
+        # scrollbars deixam você andar pela imagem inteira.
+        self.scroller = Gtk.ScrolledWindow()
+        self.scroller.set_min_content_height(480)
+        self.scroller.set_child(self.picture)
         frame = Gtk.Frame()
-        frame.set_child(self.picture)
+        frame.set_child(self.scroller)
         self.frame = frame
         self.container.append(frame)
         self.note = label("", "dim-label", "caption")
@@ -290,16 +301,37 @@ class ImageView:
             try:
                 texture = Gdk.Texture.new_from_bytes(GLib.Bytes.new(data))
                 self.picture.set_paintable(texture)
+                self.width, self.height = texture.get_width(), texture.get_height()
                 self.title.set_label("Imagem")
                 self.frame.set_visible(True)
-                self.note.set_label(f"{texture.get_width()}x{texture.get_height()} · {len(data) // 1024} KiB")
+                self.zoom_btn.set_visible(True)
+                self._apply_zoom()
                 shown_image = True
             except GLib.Error:
                 shown_image = False
         if not shown_image:
             self.frame.set_visible(False)
+            self.zoom_btn.set_visible(False)
             self.title.set_label("Arquivo")
             self.note.set_label(f"{len(data) // 1024} KiB · use Salvar pra guardar")
+
+    def _toggle_zoom(self, btn) -> None:
+        self.full_size = btn.get_active()
+        self._apply_zoom()
+
+    def _apply_zoom(self) -> None:
+        if self.full_size:
+            # 100%: a imagem pede o tamanho real e a área rola.
+            self.picture.set_can_shrink(False)
+            self.picture.set_halign(Gtk.Align.START)
+            self.picture.set_valign(Gtk.Align.START)
+            self.scroller.set_hscrollbar_policy(Gtk.PolicyType.AUTOMATIC)
+        else:
+            self.picture.set_can_shrink(True)
+            self.picture.set_halign(Gtk.Align.FILL)
+            self.picture.set_valign(Gtk.Align.FILL)
+            self.scroller.set_hscrollbar_policy(Gtk.PolicyType.NEVER)
+        self.note.set_label(f"{self.width}x{self.height} · {len(self.data) // 1024} KiB")
 
     def _save(self, *_):
         dialog = Gtk.FileDialog()
