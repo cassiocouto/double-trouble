@@ -32,7 +32,6 @@ def build_spec(
     env["RELAY_CALLER"] = caller
     env["RELAY_COMMAND"] = resolved.meta.nome
     env["RELAY_COMMAND_FILE"] = str(resolved.opened.path)
-    env["PONTE_DE"] = caller  # comandos antigos do ponte.py v1 liam esta variável
     if extra_env:
         env.update(extra_env)
     fd = resolved.opened.fd
@@ -47,7 +46,7 @@ def build_spec(
 
 
 def run_collect(spec: RunSpec, cancel: threading.Event | None = None) -> tuple[RunResult, str, str]:
-    """Roda e junta a saída inteira (usado pelo modo v1, sem streaming)."""
+    """Roda e junta a saída inteira, sem streaming."""
     out: dict[str, list[str]] = {"stdout": [], "stderr": []}
 
     def collect(stream: str, text: str) -> None:

@@ -101,7 +101,7 @@ class Client:
                     "Atualize o relay nas duas máquinas"
                 )
             raise ProtocolError(
-                f"{m.name} fechou a conexão sem responder. Pode ser o ponte.py antigo (v1) rodando lá, "
+                f"{m.name} fechou a conexão sem responder. Pode ser uma versão antiga (v1) rodando lá, "
                 "ou este IP fora da lista de permitidos dela"
             )
         return sock

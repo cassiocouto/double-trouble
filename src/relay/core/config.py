@@ -24,8 +24,8 @@ from pathlib import Path
 
 from . import paths
 from .errors import ConfigError
-from .legacy import loads_strict
 from .safety import path_problem, read_private_text, write_private
+from .strictjson import loads_strict
 
 CONFIG_VERSION = 2
 DEFAULT_PORT = 47800

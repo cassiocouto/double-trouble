@@ -54,36 +54,9 @@ def run(script, env, *args, stdin=None):
     )
 
 
-def write_v1(home: Path):
-    cfg_dir = home / ".config" / "ponte"  # onde o ponte.py v1 guardava tudo
-    (cfg_dir / "comandos").mkdir(parents=True, mode=0o700)
-    os.chmod(cfg_dir, 0o700)
-    cmd = cfg_dir / "comandos" / "meu_comando.py"
-    cmd.write_text('"""Comando antigo."""\nprint("oi")\n')
-    os.chmod(cmd, 0o600)
-    v1 = {
-        "nome": "cass-dell-brasil",
-        "escutar": "100.100.1.1",
-        "porta": 47800,
-        "segredo": "ab" * 32,
-        "permitidos": ["100.64.0.0/10"],
-        "maquinas": {"cass-dell-g15-5511": {"endereco": "cass-dell-g15-5511", "porta": 47800}},
-    }
-    fd = os.open(cfg_dir / "config.json", os.O_WRONLY | os.O_CREAT, 0o600)
-    with os.fdopen(fd, "w") as f:
-        json.dump(v1, f)
-    unit_dir = home / ".config" / "systemd" / "user"
-    unit_dir.mkdir(parents=True)
-    (unit_dir / "ponte.service").write_text("[Service]\nExecStart=/usr/bin/python3 /home/x/ponte.py servir\n")
-    return cfg_dir
-
-
-def test_install_migrate_and_uninstall(home):
+def test_install_and_uninstall(home):
     home, env, log = home
-    cfg_dir = write_v1(home)
-    v1_bytes = (cfg_dir / "config.json").read_bytes()
-
-    r = run("install.sh", env, "--sim")
+    r = run("install.sh", env)
     assert r.returncode == 0, r.stdout + r.stderr
     out = r.stdout
 
@@ -92,21 +65,15 @@ def test_install_migrate_and_uninstall(home):
     for exe in ("relay", "relay-agent", "relay-gui"):
         assert os.readlink(home / ".local" / "bin" / exe) == str(venv / "bin" / exe)
 
-    # migração: relay.json novo, config.json intacto, serviço v1 parado e desabilitado
-    assert (cfg_dir / "config.json").read_bytes() == v1_bytes
-    assert list(cfg_dir.glob("config.json.v1-backup-*"))
-    new_dir = home / ".config" / "relay"
-    new = json.loads((new_dir / "relay.json").read_text())
-    # comando antigo copiado pra pasta nova, e o original continua lá
-    assert (new_dir / "comandos" / "meu_comando.py").read_text() == (
-        cfg_dir / "comandos" / "meu_comando.py"
-    ).read_text()
-    assert oct(os.stat(new_dir / "comandos" / "meu_comando.py").st_mode & 0o777) == "0o600"
-    assert new["nome"] == "cass-dell-brasil" and "cass-dell-g15-5511" in new["maquinas"]
-    calls = log.read_text()
-    assert "--user stop ponte.service" in calls and "--user disable ponte.service" in calls
+    cfg_dir = home / ".config" / "relay"
+    cfg = json.loads((cfg_dir / "relay.json").read_text())
+    assert cfg["versao"] == 2
+    mine = cfg_dir / "comandos" / "meu_comando.py"
+    mine.write_text("print('meu')\n")
+    os.chmod(mine, 0o600)
 
     # agente
+    calls = log.read_text()
     unit = (home / ".config" / "systemd" / "user" / "relay-agent.service").read_text()
     assert f"ExecStart={venv}/bin/relay-agent" in unit
     assert "@VENV@" not in unit and "@REPO@" not in unit
@@ -130,8 +97,8 @@ def test_install_migrate_and_uninstall(home):
     assert "sudo " not in calls  # nunca chamou sudo
 
     # o relay instalado funciona
-    r2 = subprocess.run([str(venv / "bin" / "relay"), "maquinas"], env=env, capture_output=True, text=True)
-    assert "cass-dell-g15-5511" in r2.stdout
+    r2 = subprocess.run([str(venv / "bin" / "relay"), "comandos"], env=env, capture_output=True, text=True)
+    assert "meu_comando" in r2.stdout
 
     # desinstalar tira o programa e deixa config e comandos
     r = run("uninstall.sh", env)
@@ -139,7 +106,7 @@ def test_install_migrate_and_uninstall(home):
     assert not venv.exists()
     assert not (home / ".config" / "systemd" / "user" / "relay-agent.service").exists()
     assert not (home / ".local" / "bin" / "relay").exists()
-    assert (new_dir / "relay.json").exists() and (cfg_dir / "config.json").read_bytes() == v1_bytes
+    assert (cfg_dir / "relay.json").exists() and mine.exists()
 
 
 def test_install_fresh_agent_only(home):
@@ -156,15 +123,6 @@ def test_install_fresh_agent_only(home):
         "abrir_url.py",
     }
     assert not (home / ".local" / "share" / "applications" / "dev.cass.Relay.desktop").exists()
-
-
-def test_install_without_tty_skips_migration(home):
-    home, env, _ = home
-    write_v1(home)
-    r = run("install.sh", env, "--agente")
-    assert r.returncode == 0, r.stdout + r.stderr
-    assert "Pulei a migração" in r.stdout
-    assert not (home / ".config" / "relay" / "relay.json").exists()
 
 
 def test_install_refuses_root(home):

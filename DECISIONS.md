@@ -10,9 +10,9 @@ O `hostname` aqui é `vm` (Ubuntu 24.04, Python 3.12 do sistema). Por isso
 nada aqui toca no `~/.config/relay` real, e não dá pra acessar a G15. A
 instalação nas duas máquinas fica pra você, com os passos no README.
 
-**D02. O `ponte.py` original fica em `legacy/v1_original.py`, sem mudanças.**
-Os testes da fase 0 carregam esse arquivo direto. Assim dá pra comparar o v1
-com o v2 a qualquer momento, e o script antigo continua disponível.
+**D02. O script original ficou no repositório durante a reescrita.**
+Os testes da fase 0 carregavam esse arquivo direto, pra comparar o v1 com o v2.
+Saiu depois, junto com a migração (ver D70).
 
 **D03. Bugs do v1 viram testes `xfail(strict=True)`.**
 Achei dois. (1) Um `mac` com caractere não-ASCII faz o `hmac.compare_digest`
@@ -76,8 +76,8 @@ e tira a ambiguidade de qual valor vale numa chave repetida.
 **D13. Uma linha mágica antes dos frames.**
 O controlador manda `RELAY/2\n` e o agente devolve a mesma. Isso dá erro
 claro nos dois sentidos: um cliente v1 recebe uma linha JSON no formato dele
-dizendo pra atualizar, e um controlador v2 falando com o ponte.py antigo
-avisa que "pode ser o v1". Custa 8 bytes.
+dizendo pra atualizar, e um controlador v2 falando com a versão antiga
+avisa que "pode ser uma versão antiga". Custa 8 bytes.
 
 **D14. Um pedido por conexão, várias respostas.**
 Simplifica a amarração nonce + seq: cada conexão tem um nonce só e o seq
@@ -89,8 +89,8 @@ O pedido diz "um segredo por par". Usei um por par **ordenado**
 (controlador → agente). Assim "a G15 pode mandar na brasil" e "a brasil pode
 mandar na G15" são decisões separadas, e revogar uma não mexe na outra. Por
 cima disso, a chave de assinatura é derivada do segredo com os nomes das duas
-pontas. Com isso, mesmo o config migrado do v1 (mesmo segredo nas duas
-direções) não aceita um pedido refletido de uma direção na outra.
+pontas. Com isso, mesmo usando o mesmo segredo nas duas direções, um pedido
+refletido de uma direção não vale na outra.
 
 **D16. Controlador desconhecido e assinatura errada dão a mesma resposta.**
 Sem assinatura, sem nonce, mesma mensagem. Ninguém de fora descobre quais
@@ -200,12 +200,9 @@ recusas (IP, assinatura, replay, permissão, whois), o início (`rodar`, com
 parâmetros) e o fim (`fim`, com código, estado e duração). Parâmetros com
 `segredo: True` aparecem como `***`. Texto longo é cortado em 200 caracteres.
 
-**D33. A migração não sobrescreve nada.**
-O v2 usa um arquivo novo, `relay.json`. O `config.json` do v1 fica intacto,
-e ganha uma cópia de backup do lado. O `ponte.service` antigo é parado e
-desabilitado, mas o arquivo fica. Voltar pro v1 é
-`systemctl --user enable --now ponte.service`. O `install.sh` mostra o plano
-e pergunta antes. Sem terminal (e sem `--sim`), ele pula a migração.
+**D33. A migração não sobrescrevia nada.**
+Ela criava um config novo e deixava o antigo intacto, com backup, e só parava
+o serviço antigo. Saiu depois (ver D70).
 
 **D34. O instalador monta o pacote numa cópia temporária.**
 Assim ele não precisa escrever na pasta do repositório nem deixa `build/` lá.
@@ -222,9 +219,8 @@ Não consegui ver as duas máquinas, então mirei no Ubuntu desta: 24.04, com
 Python 3.12, GTK 4.14 e libadwaita 1.5. O código roda em Python 3.10 ou mais
 novo. O instalador confere a libadwaita 1.5 e mostra a linha do apt se faltar.
 
-**D37. `relay exemplos --atualizar` pra quem migrou.**
-A migração copia os comandos do v1 sem mudar nada neles. Os exemplos antigos
-continuam funcionando (o `ACEITA_ARGS` ainda vale). Pra trocar pelas versões novas,
+**D37. `relay exemplos --atualizar`.**
+Comandos no formato antigo continuam funcionando (o `ACEITA_ARGS` ainda vale). Pra trocar pelas versões novas,
 com `PARAMETROS`, existe esse comando. Ele pergunta antes e guarda os antigos
 como `.bak`.
 
@@ -380,23 +376,19 @@ de config (`relay.json`), as variáveis de ambiente (`RELAY_*`) e os rótulos do
 protocolo (`RELAY/2`, `RELAY-PAR/1`). Os textos da tela e das mensagens
 continuam em português, como no pedido original.
 
-**D63. Só o que é do v1 continua com o nome antigo.**
-A migração ainda procura `~/.config/ponte/config.json` e o `ponte.service` que
-roda `ponte.py servir`, porque é isso que está nas suas máquinas. O script
-original foi pra `legacy/v1_original.py`, sem mudar uma linha.
+**D63. Nada usa mais o nome antigo.**
+Num primeiro momento a migração ainda procurava as pastas e o serviço com o
+nome antigo. Isso saiu (ver D70).
 
-**D64. A migração copia os comandos pra pasta nova.**
-Com a pasta de config nova, os comandos de `~/.config/ponte/comandos` são
-copiados (modo 600) pra `~/.config/relay/comandos`. Os originais ficam onde
-estão, então voltar pro v1 continua funcionando. Um comando que já existe na
-pasta nova nunca é sobrescrito.
+**D64. Comandos ficam em `~/.config/relay/comandos`.**
+Pra trazer comandos de uma instalação antiga, é só copiar os `.py` pra lá
+com modo 600.
 
 **D65. Ajuda dos comandos em inglês: `relay.command`.**
 `params()`, `caller()` e `detach()` (antes `parametros()`, `quem_chamou()` e
 `soltar()`). O pedido original era identificadores em inglês, e a troca de
 nome foi a hora certa de acertar isso. O comando recebe `RELAY_CALLER`,
-`RELAY_COMMAND` e `RELAY_COMMAND_FILE` no ambiente, e também `PONTE_DE`, só
-pra não quebrar comandos antigos do v1 que liam essa variável.
+`RELAY_COMMAND` e `RELAY_COMMAND_FILE` no ambiente.
 
 **D66. Branches com nome que diz o que fazem, mergeados no `main`.**
 `feature/...` pra coisa nova, `fix/...` pra correção, `refactor/...` pra
@@ -423,6 +415,17 @@ lista, troca. Com `*`, libera tudo. Vale na hora, porque o agente relê o
 config sozinho.
 
 **D69. A `cass-dell-brasil` sai do par.**
-Na G15, a migração do v1 traz a brasil junto (estava no config antigo). O
-README manda revogar e remover ela logo depois de migrar, pra não sobrar uma
-confiança antiga com o segredo compartilhado do v1.
+As duas máquinas começam do zero com `relay init` e são pareadas por código.
+Nenhuma confiança antiga é trazida.
+
+## Limpeza do nome antigo
+
+**D70. Saem a migração, o script original e os testes dele.**
+Você pediu pra tirar o nome antigo de tudo. Ele só sobrava no suporte à
+versão antiga: o script original, os testes que fixavam o comportamento dele,
+a migração e uma variável de ambiente de compatibilidade. Como a HP é nova e
+a brasil saiu do par, a migração quase não servia mais. Ela saiu inteira, com
+o `relay migrar`. As duas máquinas começam com `relay init` e pareamento por
+código. Os bugs achados na versão antiga continuam descritos no D03, e os
+testes de ataque do v2 cobrem as mesmas garantias. Um teste confere que o
+nome antigo não volta em nenhum arquivo do repositório.
