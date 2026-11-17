@@ -529,3 +529,11 @@ Na interface, a tela de executar mostra a imagem assim que ela chega
 (`Gtk.Picture` + `Gdk.Texture`), com botão de salvar. Pela linha de comando,
 `relay rodar <maq> screenshot --salvar <pasta>` grava o arquivo com nome
 automático. O `relay-gui --checar` monta a tela com uma imagem de exemplo.
+
+**D83. O install.sh traz exemplos novos sozinho.**
+Antes, um exemplo novo (como o screenshot) só chegava rodando `relay exemplos`
+à mão em cada máquina. Agora o install.sh copia os exemplos que faltam depois
+de garantir o config, sem tocar nos comandos que você já tem nem no config
+(nada de re-parear). `git pull && ./scripts/install.sh` basta. O
+`relay exemplos` continua existindo pra quem quer rodar só isso, e o
+`--atualizar` troca os antigos pelas versões novas.

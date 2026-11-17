@@ -148,7 +148,9 @@ step "Config em $CONFIG_DIR"
 
 RELAY="$VENV/bin/relay"
 if [[ -f "$CONFIG_DIR/relay.json" ]]; then
-  say "já existe $CONFIG_DIR/relay.json, não mexo"
+  say "já existe $CONFIG_DIR/relay.json, não mexo nas máquinas nem no segredo"
+  # Traz comandos de exemplo novos (ex. screenshot) sem tocar nos que já existem.
+  "$RELAY" exemplos || true
 else
   "$RELAY" init
 fi

@@ -274,9 +274,11 @@ valor chega como `None` (ou `False`, se for booleano).
 
 Os exemplos (`status`, `notificar`, `travar_tela`, `abrir_url`, `screenshot`)
 estão na pasta de comandos. O `screenshot` tira um print da tela, sem
-notificação nem atalho de teclado, e devolve a imagem. Pra trocar versões
-antigas pelas novas, ou trazer um exemplo que ainda não existe na sua pasta:
-`relay exemplos --atualizar` (pergunta antes e guarda as antigas como `.bak`).
+notificação nem atalho de teclado, e devolve a imagem. O `install.sh` traz os
+exemplos novos sozinho a cada atualização, sem tocar nos que você já tem nem no
+config (então rodar `git pull && ./scripts/install.sh` já basta). Pra trocar
+os exemplos antigos pelas versões novas: `relay exemplos --atualizar` (pergunta
+antes e guarda as antigas como `.bak`).
 
 ---
 
