@@ -437,12 +437,13 @@ class CropView:
     """Mostra uma imagem e deixa arrastar um retângulo pra recortar um pedaço.
 
     A imagem é um `Gtk.Picture` (o mesmo jeito que já funciona na tela do print).
-    O retângulo de seleção e a dica são widgets de verdade posicionados num
-    `Gtk.Fixed` por cima — nada de desenho com cairo, que nem sempre está
-    disponível. As camadas de cima não pegam clique (`can_target = False`), então
-    o arrasto vai direto pro `Picture`. Com "tamanho real" a imagem fica em 100%
-    e a área rola. crop_png() devolve o recorte, ou a imagem inteira se nada foi
-    selecionado.
+    O retângulo de seleção, o rótulo e a dica são widgets de verdade por cima da
+    imagem, posicionados por margem num `Gtk.Overlay` — nada de `Gtk.Fixed` (que
+    entrava em laço de alocação de tamanho e estourava a pilha) e nada de cairo
+    (que nem sempre está disponível). As camadas de cima não pegam clique
+    (`can_target = False`), então o arrasto vai direto pro `Picture`. Com
+    "tamanho real" a imagem fica em 100% e a área rola. crop_png() devolve o
+    recorte, ou a imagem inteira se nada foi selecionado.
     """
 
     MIN_PIXELS = 4
@@ -461,19 +462,20 @@ class CropView:
         self.picture.set_content_fit(Gtk.ContentFit.CONTAIN)
         self.picture.set_cursor(Gdk.Cursor.new_from_name("crosshair", None))
 
-        # Camada livre por cima da imagem: o retângulo e o rótulo de tamanho.
-        self.fixed = Gtk.Fixed()
-        self.fixed.set_can_target(False)
+        # O retângulo e o rótulo ficam no canto de cima à esquerda e a margem
+        # empurra pro lugar. Sem Gtk.Fixed, que dava laço de alocação de tamanho.
         self.selbox = Gtk.Box()
         self.selbox.add_css_class("crop-selection")
+        self.selbox.set_halign(Gtk.Align.START)
+        self.selbox.set_valign(Gtk.Align.START)
         self.selbox.set_can_target(False)
         self.selbox.set_visible(False)
         self.sizelbl = Gtk.Label()
         self.sizelbl.add_css_class("crop-size")
+        self.sizelbl.set_halign(Gtk.Align.START)
+        self.sizelbl.set_valign(Gtk.Align.START)
         self.sizelbl.set_can_target(False)
         self.sizelbl.set_visible(False)
-        self.fixed.put(self.selbox, 0, 0)
-        self.fixed.put(self.sizelbl, 0, 0)
 
         self.hint = label(self.HINT, "crop-hint")
         self.hint.set_halign(Gtk.Align.CENTER)
@@ -484,7 +486,8 @@ class CropView:
 
         self.overlay = Gtk.Overlay()
         self.overlay.set_child(self.picture)
-        self.overlay.add_overlay(self.fixed)
+        self.overlay.add_overlay(self.selbox)
+        self.overlay.add_overlay(self.sizelbl)
         self.overlay.add_overlay(self.hint)
 
         drag = Gtk.GestureDrag()
@@ -565,16 +568,18 @@ class CropView:
         self.hint.set_visible(False)
         x0, y0 = self._start
         x1, y1 = self._cur
-        rx, ry = int(min(x0, x1)), int(min(y0, y1))
+        rx, ry = max(0, int(min(x0, x1))), max(0, int(min(y0, y1)))
         rw, rh = int(abs(x1 - x0)), int(abs(y1 - y0))
         self.selbox.set_size_request(max(1, rw), max(1, rh))
-        self.fixed.move(self.selbox, rx, ry)
+        self.selbox.set_margin_start(rx)
+        self.selbox.set_margin_top(ry)
         self.selbox.set_visible(True)
         sel = self._pixels(enforce_min=False)
         if sel is not None:
             self.sizelbl.set_label(f"{sel[2]} × {sel[3]} px")
             ly = ry - 24 if ry >= 24 else ry + 4
-            self.fixed.move(self.sizelbl, rx, ly)
+            self.sizelbl.set_margin_start(rx)
+            self.sizelbl.set_margin_top(max(0, ly))
             self.sizelbl.set_visible(True)
         else:
             self.sizelbl.set_visible(False)
