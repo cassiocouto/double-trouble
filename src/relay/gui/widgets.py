@@ -493,9 +493,11 @@ class CropView:
         self.picture.add_controller(drag)
 
         self.scroller = Gtk.ScrolledWindow()
-        self.scroller.set_min_content_height(500)
+        self.scroller.set_min_content_height(320)
+        self.scroller.set_vexpand(True)
         self.scroller.set_child(self.overlay)
         frame = Gtk.Frame()
+        frame.set_vexpand(True)
         frame.set_child(self.scroller)
         self.widget = frame
 
