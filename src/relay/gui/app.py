@@ -6,6 +6,9 @@ import contextlib
 import faulthandler
 import os
 import sys
+import tempfile
+
+_CRASH_FILE = None  # mantém o arquivo do faulthandler vivo enquanto o app roda
 
 
 def _missing_gtk_message(exc: BaseException) -> str:
@@ -18,11 +21,13 @@ def _missing_gtk_message(exc: BaseException) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
-    # Se o programa cair com segfault, isto imprime no terminal a pilha Python
-    # até a chamada que derrubou tudo (funciona até pra crash em C, dentro do
-    # GTK). Ajuda a saber se é vídeo ou código.
+    # Se o programa cair com segfault, grava num arquivo a pilha Python até a
+    # chamada que derrubou tudo (funciona até pra crash em C, dentro do GTK).
+    # Arquivo (não terminal) pra não embaralhar quando mais de uma thread cai.
     with contextlib.suppress(Exception):
-        faulthandler.enable()
+        global _CRASH_FILE
+        _CRASH_FILE = open(os.path.join(tempfile.gettempdir(), "relay-crash.txt"), "w")  # noqa: SIM115
+        faulthandler.enable(file=_CRASH_FILE, all_threads=True)
     # Renderizador de software por padrão. O renderizador GL do GTK 4 trava
     # (pisca a tela e dá segfault) em várias placas/drivers, ainda mais com uma
     # imagem grande na tela. O de software é estável e usa a libcairo do sistema
