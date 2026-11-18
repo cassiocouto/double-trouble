@@ -727,3 +727,13 @@ responder, explicar ou completar código. O campo virou "(opcional)". E a tela d
 OCR ganhou um `Gtk.Spinner` do lado do status, que gira enquanto tira o print,
 lê o texto ou pergunta, pra não parecer travado. (`Gtk.Spinner`, não
 `Adw.Spinner`, que é de libadwaita mais nova.)
+
+**D106. Volta a rolagem na tela de OCR, e a caixa de texto tem teto.**
+Tirar a rolagem vertical pra imagem crescer (D99) deu ruim: com bastante texto
+no bloco, a caixa crescia e empurrava os botões (Copiar, Liberar, Limpar) pra
+fora da janela, sem como chegar neles. Voltou a rolagem por fora (a página
+inteira rola, os botões sempre dão pra alcançar), a imagem ficou num tamanho
+fixo generoso (440 px, e o "Tamanho real" mostra em 100%), e a caixa "Texto
+juntado" virou uma área de altura limitada (200–320 px) que rola por dentro, em
+vez de crescer sem parar. Usabilidade na frente do "a imagem acompanha a
+janela".
