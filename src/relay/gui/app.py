@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import contextlib
+import faulthandler
 import os
 import sys
 
@@ -16,6 +18,11 @@ def _missing_gtk_message(exc: BaseException) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # Se o programa cair com segfault, isto imprime no terminal a pilha Python
+    # até a chamada que derrubou tudo (funciona até pra crash em C, dentro do
+    # GTK). Ajuda a saber se é vídeo ou código.
+    with contextlib.suppress(Exception):
+        faulthandler.enable()
     # Renderizador de software por padrão. O renderizador GL do GTK 4 trava
     # (pisca a tela e dá segfault) em várias placas/drivers, ainda mais com uma
     # imagem grande na tela. O de software é estável e usa a libcairo do sistema
