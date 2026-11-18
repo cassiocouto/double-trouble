@@ -250,9 +250,11 @@ class RunPage:
         c = vm.command
 
         head = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
-        head.append(label(c.get("descricao") or "(sem descrição)", "title-4"))
+        title_row = Gtk.Box(spacing=8)
+        title_row.append(label(c.get("descricao") or "(sem descrição)", "title-4"))
         if c.get("detalhes"):
-            head.append(label(c["detalhes"], "dim-label"))
+            title_row.append(self._details_button(c["detalhes"]))
+        head.append(title_row)
         facts = [f"em {vm.machine}", f"limite de {text.duration(c.get('timeout'))}"]
         if c.get("confirmar"):
             facts.append("pede confirmação")
@@ -311,6 +313,21 @@ class RunPage:
         if vm.artifact is not None:
             self._show_artifact(vm.artifact, vm.artifact_is_image)
         self.refresh()
+
+    def _details_button(self, detalhes: str) -> Gtk.MenuButton:
+        """Esconde o texto comprido de ajuda atrás de um (i), pra não poluir a tela."""
+        info = Gtk.MenuButton(icon_name="help-about-symbolic")
+        info.add_css_class("flat")
+        info.set_valign(Gtk.Align.CENTER)
+        info.set_tooltip_text("Detalhes")
+        lbl = label(detalhes, "dim-label", "caption")
+        lbl.set_max_width_chars(52)
+        for side in ("top", "bottom", "start", "end"):
+            getattr(lbl, f"set_margin_{side}")(12)
+        pop = Gtk.Popover()
+        pop.set_child(lbl)
+        info.set_popover(pop)
+        return info
 
     def _show_artifact(self, data: bytes, is_image: bool) -> None:
         self.image.container.set_visible(True)
@@ -497,6 +514,19 @@ class CapturePage:
         self.status = label("", "heading")
         box.append(self.status)
 
+        img_head = Gtk.Box(spacing=6)
+        img_head.append(label("Imagem", "heading"))
+        spacer = Gtk.Box()
+        spacer.set_hexpand(True)
+        img_head.append(spacer)
+        self.zoom_btn = Gtk.ToggleButton(label="Tamanho real")
+        self.zoom_btn.add_css_class("flat")
+        self.zoom_btn.set_tooltip_text("Ver em 100% pra mirar num texto pequeno (rola pra ver tudo)")
+        self.zoom_btn.connect("toggled", lambda b: self.crop.set_full_size(b.get_active()))
+        img_head.append(self.zoom_btn)
+        self.img_head = img_head
+        box.append(img_head)
+
         self.crop = CropView()
         box.append(self.crop.widget)
 
@@ -508,7 +538,13 @@ class CapturePage:
         self.extract_btn.connect("clicked", lambda *_: self._extract())
         self.extract_btn.set_sensitive(False)
         under.append(self.extract_btn)
+        self.under = under
         box.append(under)
+
+        # A área da imagem só aparece depois que tem um print, pra tela começar
+        # limpa.
+        for w in (self.img_head, self.crop.widget, self.under):
+            w.set_visible(False)
 
         box.append(label("Texto juntado", "heading"))
         self.textview = Gtk.TextView()
@@ -541,6 +577,7 @@ class CapturePage:
         if prefill is not None:
             try:
                 self.crop.set_image(prefill)
+                self._show_image_area()
                 self.extract_btn.set_sensitive(True)
                 self.status.set_label("Arraste o mouse sobre o texto e clique em “Ler recorte”.")
             except Exception:
@@ -548,6 +585,10 @@ class CapturePage:
         else:
             self.status.set_label("Clique em “Tirar print” pra começar.")
         self._refresh()
+
+    def _show_image_area(self) -> None:
+        for w in (self.img_head, self.crop.widget, self.under):
+            w.set_visible(True)
 
     def _mode(self) -> str:
         return "pergunta" if self.mode.get_selected() == 1 else "ocr"
@@ -569,6 +610,8 @@ class CapturePage:
                 except Exception as e:
                     self.status.set_label(f"não consegui mostrar a imagem ({e})")
                     return
+                self._show_image_area()
+                self.zoom_btn.set_active(False)
                 self.extract_btn.set_sensitive(True)
                 self.status.set_label(
                     "Pronto. Arraste o mouse sobre o texto e clique em “Ler recorte”, logo abaixo da imagem."

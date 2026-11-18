@@ -106,8 +106,12 @@ class OutputView(Gtk.ScrolledWindow):
 
     def __init__(self):
         super().__init__()
-        self.set_min_content_height(260)
-        self.set_vexpand(True)
+        # Cresce com a saída até um teto e só então rola, pra uma saída de uma
+        # linha não virar uma caixa preta gigante.
+        self.set_min_content_height(90)
+        self.set_max_content_height(360)
+        self.set_propagate_natural_height(True)
+        self.set_vexpand(False)
         self.text = Gtk.TextView()
         self.text.set_editable(False)
         self.text.set_cursor_visible(False)
@@ -390,12 +394,12 @@ def png_from_pixbuf(pb: GdkPixbuf.Pixbuf) -> bytes:
 class CropView:
     """Mostra uma imagem e deixa arrastar um retângulo pra recortar um pedaço.
 
-    A imagem e o retângulo são desenhados na mesma área (um só DrawingArea), que
-    também recebe o arrasto. Assim o que o mouse toca e o que é desenhado usam a
-    mesma coordenada, sem camadas por cima que ficam com tamanho zero. As
-    coordenadas da tela viram pixels da imagem levando em conta a escala e as
-    bordas (a imagem cabe na área, centralizada). crop_png() devolve o recorte,
-    ou a imagem inteira se nada foi selecionado.
+    A imagem é desenhada por um `Gtk.Picture` (o mesmo jeito que já funciona na
+    tela do print). Por cima fica um `DrawingArea` transparente que só desenha o
+    retângulo de seleção; ele não pega clique (`can_target = False`), então o
+    arrasto vai direto pro `Picture`, e os dois usam a mesma coordenada. Com
+    "tamanho real" a imagem fica em 100% e a área rola. crop_png() devolve o
+    recorte, ou a imagem inteira se nada foi selecionado.
     """
 
     MIN_PIXELS = 4
@@ -404,35 +408,73 @@ class CropView:
     def __init__(self):
         self.pixbuf: GdkPixbuf.Pixbuf | None = None
         self.iw = self.ih = 0
+        self.full_size = False
         self._start: tuple[float, float] | None = None
         self._cur: tuple[float, float] | None = None
+
+        self.picture = Gtk.Picture()
+        self.picture.set_can_shrink(True)
+        self.picture.set_content_fit(Gtk.ContentFit.CONTAIN)
+        self.picture.set_cursor(Gdk.Cursor.new_from_name("crosshair", None))
+
         self.area = Gtk.DrawingArea()
         self.area.set_draw_func(self._draw)
-        self.area.set_size_request(-1, 520)
-        self.area.set_hexpand(True)
+        self.area.set_can_target(False)  # o clique passa pra imagem embaixo
+        self.area.set_halign(Gtk.Align.FILL)
+        self.area.set_valign(Gtk.Align.FILL)
+
+        self.overlay = Gtk.Overlay()
+        self.overlay.set_child(self.picture)
+        self.overlay.add_overlay(self.area)
+
         drag = Gtk.GestureDrag()
         drag.connect("drag-begin", self._begin)
         drag.connect("drag-update", self._update)
         drag.connect("drag-end", self._end)
-        self.area.add_controller(drag)
+        self.picture.add_controller(drag)
+
+        self.scroller = Gtk.ScrolledWindow()
+        self.scroller.set_min_content_height(500)
+        self.scroller.set_child(self.overlay)
         frame = Gtk.Frame()
-        frame.set_child(self.area)
+        frame.set_child(self.scroller)
         self.widget = frame
 
     def set_image(self, data: bytes) -> None:
         self.pixbuf = pixbuf_from_png(data)
         self.iw, self.ih = self.pixbuf.get_width(), self.pixbuf.get_height()
+        self.picture.set_paintable(Gdk.Texture.new_for_pixbuf(self.pixbuf))
         self._start = self._cur = None
-        self.area.queue_draw()
+        self._apply_zoom()
 
     @property
     def has_image(self) -> bool:
         return self.pixbuf is not None
 
+    def set_full_size(self, flag: bool) -> None:
+        self.full_size = flag
+        self._start = self._cur = None  # a coordenada muda de escala
+        self._apply_zoom()
+
+    def _apply_zoom(self) -> None:
+        if self.full_size:
+            self.picture.set_can_shrink(False)
+            self.picture.set_halign(Gtk.Align.START)
+            self.picture.set_valign(Gtk.Align.START)
+            self.scroller.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
+        else:
+            self.picture.set_can_shrink(True)
+            self.picture.set_halign(Gtk.Align.FILL)
+            self.picture.set_valign(Gtk.Align.FILL)
+            self.scroller.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        self.area.queue_draw()
+
     def _geom(self):
         w, h = self.area.get_width(), self.area.get_height()
         if not (w and h and self.iw and self.ih):
             return None
+        if self.full_size:
+            return 1.0, 0.0, 0.0, float(self.iw), float(self.ih)
         scale = min(w / self.iw, h / self.ih)
         dw, dh = self.iw * scale, self.ih * scale
         return scale, (w - dw) / 2, (h - dh) / 2, dw, dh
@@ -451,19 +493,14 @@ class CropView:
         self._update(gesture, ox, oy)
 
     def _draw(self, area, cr, w, h):
-        geom = self._geom()
-        if self.pixbuf is None or geom is None:
+        if self.pixbuf is None:
             return
-        scale, ox, oy, dw, _dh = geom
-        cr.save()
-        cr.translate(ox, oy)
-        cr.scale(scale, scale)
-        Gdk.cairo_set_source_pixbuf(cr, self.pixbuf, 0, 0)
-        cr.paint()
-        cr.restore()
         if self._start and self._cur:
             self._draw_selection(cr)
-        else:
+            return
+        geom = self._geom()
+        if geom is not None:
+            _scale, ox, oy, dw, _dh = geom
             self._draw_hint(cr, ox, oy, dw)
 
     def _draw_selection(self, cr) -> None:
