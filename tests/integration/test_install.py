@@ -122,6 +122,7 @@ def test_install_fresh_agent_only(home):
         "travar_tela.py",
         "abrir_url.py",
         "screenshot.py",
+        "autodigitar.py",
     }
     assert not (home / ".local" / "share" / "applications" / "dev.cass.Relay.desktop").exists()
 

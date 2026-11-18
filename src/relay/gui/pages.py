@@ -13,6 +13,7 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 from gi.repository import Adw, GLib, GObject, Gtk  # noqa: E402
 
+from ..core.params import MAX_MULTILINE  # noqa: E402
 from . import text  # noqa: E402
 from .history import Entry  # noqa: E402
 from .viewmodels import CaptureVM, CommandsVM, HistoryVM, MachinesVM, RunVM  # noqa: E402
@@ -585,10 +586,14 @@ class CapturePage:
         self.copy_btn.connect("clicked", self._copy)
         self.release_btn = button("Liberar (salvar)", "pill", "suggested-action")
         self.release_btn.connect("clicked", lambda *_: self._release())
+        self.type_btn = button(f"Digitar em {machine}", "flat")
+        self.type_btn.set_tooltip_text("Manda o bloco pra máquina autodigitar (comando 'autodigitar' + 'autotyper')")
+        self.type_btn.connect("clicked", lambda *_: self._autotype())
         clear_btn = button("Limpar", "flat")
         clear_btn.connect("clicked", lambda *_: self.vm.clear())
         actions.append(self.copy_btn)
         actions.append(self.release_btn)
+        actions.append(self.type_btn)
         actions.append(clear_btn)
         box.append(actions)
 
@@ -694,6 +699,7 @@ class CapturePage:
         self.extract_btn.set_sensitive(self.crop.has_image and not busy)
         self.copy_btn.set_sensitive(self.vm.has_text)
         self.release_btn.set_sensitive(self.vm.has_text)
+        self.type_btn.set_sensitive(self.vm.has_text)
         if self.vm.error:
             self.status.set_label(self.vm.error)
         elif not busy and self.vm.snippets:
@@ -708,3 +714,24 @@ class CapturePage:
         copy_to_clipboard(self.page, text)
         self.win.save_text(text, suggested_name=f"{self.machine}-texto")
         self.win.toast("Bloco copiado e começando um novo")
+
+    def _autotype(self) -> None:
+        """Manda o bloco pra máquina autodigitar (comando 'autodigitar' lá)."""
+        bloco = self.vm.block
+        if not bloco.strip():
+            self.win.toast("o bloco está vazio")
+            return
+        if len(bloco) > MAX_MULTILINE:
+            self.win.toast(f"o bloco tem {len(bloco)} caracteres (máximo {MAX_MULTILINE})")
+            return
+        self.win.toast(f"mandando pra {self.machine} digitar…")
+
+        def done(outcome) -> None:
+            r = outcome.result or {}
+            if r.get("codigo") == 0:
+                self.win.toast(outcome.text_stdout.strip()[:140] or f"{self.machine} digitou o bloco")
+            else:
+                msg = outcome.text_stderr.strip() or r.get("erro") or f"código {r.get('codigo')}"
+                self.win.toast(f"não digitou: {msg[:140]}")
+
+        self.win.service.run(self.machine, "autodigitar", {"texto": bloco}, None, lambda ev: None, done, self.win.toast)

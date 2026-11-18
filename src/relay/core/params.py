@@ -29,7 +29,10 @@ TYPES = ("texto", "inteiro", "booleano", "escolha")
 PARAM_NAME_RE = re.compile(r"^[a-z][a-z0-9_]{0,31}$")
 
 MAX_PARAMS = 32
-MAX_TEXT = 4096
+MAX_TEXT = 4096  # texto de uma linha (um campo, um nome)
+# Texto de várias linhas (um bloco pra colar/digitar). Fica bem abaixo do frame
+# de pedido (64 KiB), que é o teto de verdade do que dá pra mandar.
+MAX_MULTILINE = 32768
 MAX_LABEL = 80
 MAX_HELP = 300
 MAX_OPTIONS = 100
@@ -134,7 +137,8 @@ class ParamSpec:
             bad = _CONTROL if self.multilinha else _CONTROL_SINGLE_LINE
             if bad.search(value):
                 raise ParamError(f"'{label}' tem caracteres de controle")
-            limit = self.max if self.max is not None else MAX_TEXT
+            ceiling = MAX_MULTILINE if self.multilinha else MAX_TEXT
+            limit = self.max if self.max is not None else ceiling
             if len(value) > limit:
                 raise ParamError(f"'{label}' passou de {limit} caracteres")
             if self.min is not None and len(value) < self.min:
@@ -217,8 +221,9 @@ def parse_schema(raw: object) -> list[ParamSpec]:
         if kind == "texto":
             if spec.min is not None and spec.min < 0:
                 raise _schema_error(i, "'min' de texto não pode ser negativo")
-            if spec.max is not None and not 0 <= spec.max <= MAX_TEXT:
-                raise _schema_error(i, f"'max' de texto vai de 0 a {MAX_TEXT}")
+            ceiling = MAX_MULTILINE if spec.multilinha else MAX_TEXT
+            if spec.max is not None and not 0 <= spec.max <= ceiling:
+                raise _schema_error(i, f"'max' de texto vai de 0 a {ceiling}")
             if "regex" in item:
                 rx = item["regex"]
                 if not isinstance(rx, str) or not rx or len(rx) > MAX_REGEX:

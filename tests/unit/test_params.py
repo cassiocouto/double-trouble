@@ -87,6 +87,26 @@ def test_text_default_limit():
         validate_values(specs, {"a": "x" * 4097})
 
 
+def test_multiline_text_allows_a_bigger_block():
+    # texto de várias linhas é pra bloco (ex.: autodigitar), vai além de 4096.
+    from relay.core.params import MAX_MULTILINE
+
+    specs = parse_schema([{"nome": "a", "tipo": "texto", "multilinha": True}])
+    validate_values(specs, {"a": "a\n" * (MAX_MULTILINE // 2)})  # = MAX_MULTILINE caracteres
+    with pytest.raises(ParamError, match=str(MAX_MULTILINE)):
+        validate_values(specs, {"a": "x" * (MAX_MULTILINE + 1)})
+
+
+def test_multiline_ceiling_is_enforced_and_single_line_still_4096():
+    from relay.core.params import MAX_MULTILINE
+
+    parse_schema([{"nome": "a", "tipo": "texto", "multilinha": True, "max": MAX_MULTILINE}])
+    with pytest.raises(ValueError, match=str(MAX_MULTILINE)):
+        parse_schema([{"nome": "a", "tipo": "texto", "multilinha": True, "max": MAX_MULTILINE + 1}])
+    with pytest.raises(ValueError, match="4096"):
+        parse_schema([{"nome": "a", "tipo": "texto", "max": 4097}])
+
+
 def test_int_limits_default_to_json_safe():
     specs = parse_schema([{"nome": "a", "tipo": "inteiro"}])
     validate_values(specs, {"a": 2**53})
