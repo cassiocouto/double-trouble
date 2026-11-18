@@ -737,3 +737,23 @@ fixo generoso (440 px, e o "Tamanho real" mostra em 100%), e a caixa "Texto
 juntado" virou uma área de altura limitada (200–320 px) que rola por dentro, em
 vez de crescer sem parar. Usabilidade na frente do "a imagem acompanha a
 janela".
+
+**D107. Resposta da pergunta vem sem markdown.**
+No modo "pergunta" o Claude respondia com markdown (**negrito**, ## título,
+crases). Como o bloco vai pra OCR, autodigitação etc., a resposta tem que ser
+texto puro. Agora a pergunta leva junto um pedido pra responder sem markdown
+(`NO_MARKDOWN`), e `strip_markdown()` ainda tira os marcadores que escaparem. O
+OCR NÃO passa por isso: é o texto literal da tela e fica igual.
+
+**D108. Parâmetro de texto de várias linhas aceita bloco grande, e o comando
+`autodigitar`.**
+Pra mandar o bloco pro G15 digitar (sem arquivo e sem área de transferência), o
+jeito do Relay serve de luva: os parâmetros vão pelo stdin do comando (não
+aparecem nem no `ps`). O comando `autodigitar` recebe o bloco no parâmetro
+`texto` e repassa pro programa `autotyper` (que a Cass instala à parte) também
+pelo stdin. Como o bloco junta vários recortes, um `texto` de uma linha (teto de
+4096) era pouco: criamos o teto `MAX_MULTILINE` (32768) só pra texto
+`multilinha`, bem abaixo do frame de pedido (64 KiB), que é o limite real. Texto
+de uma linha continua preso em 4096. Tem teste que tenta estourar os dois tetos.
+A tela de OCR ganhou o botão "Digitar em <máquina>", que manda o bloco pro
+comando `autodigitar` da máquina.

@@ -8,7 +8,7 @@ import os
 from relay.cli.main import install_examples
 from relay.core import paths
 
-BUNDLED = {"status", "notificar", "travar_tela", "abrir_url", "screenshot"}
+BUNDLED = {"status", "notificar", "travar_tela", "abrir_url", "screenshot", "autodigitar"}
 
 
 def sha(text: str) -> str:

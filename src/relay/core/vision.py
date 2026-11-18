@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import base64
 import json
+import re
 import urllib.error
 import urllib.request
 from collections.abc import Callable
@@ -43,6 +44,27 @@ DEFAULT_ASK_PROMPT = (
     "ele faz, mostre os problemas ou complete o que falta. Senão, diga o que é "
     "importante aqui e o que fazer a seguir. Responda em português do Brasil."
 )
+
+# Grudado no fim da pergunta: o bloco de texto vai pra OCR, autodigitação etc.,
+# então a resposta tem que ser texto puro, sem markdown.
+NO_MARKDOWN = (
+    "Responda em texto puro, sem formatação markdown: nada de ** ou __ para "
+    "negrito, nada de # para título, nada de crases para código e nada de "
+    "listas com marcador."
+)
+
+
+def strip_markdown(text: str) -> str:
+    """Tira os enfeites de markdown (negrito, código, títulos), mantendo o texto.
+
+    Serve pra resposta do modo "pergunta", não pro OCR (que é o texto literal
+    da tela e não deve ser mexido).
+    """
+    text = re.sub(r"\*\*(.+?)\*\*", r"\1", text)  # **negrito**
+    text = re.sub(r"__(.+?)__", r"\1", text)  # __negrito__
+    text = re.sub(r"`+([^`]+?)`+", r"\1", text)  # `código`
+    lines = [re.sub(r"^\s{0,3}#{1,6}\s+", "", line) for line in text.split("\n")]  # ## título
+    return "\n".join(lines)
 
 
 @dataclass
@@ -176,8 +198,13 @@ def extract_text(
     """Manda a imagem e devolve o texto. mode 'ocr' lê o texto; 'pergunta' responde `question`."""
     if not settings.configured:
         raise ConfigError("falta a chave da API do Claude. Ponha ela nas Configurações")
-    # Modo pergunta sem texto: o modelo faz o melhor que dá com o recorte.
-    prompt = ((question or "").strip() or DEFAULT_ASK_PROMPT) if mode == "pergunta" else OCR_PROMPT
+    if mode == "pergunta":
+        # Sem texto, o modelo faz o melhor que dá com o recorte. Em todo caso,
+        # pede resposta sem markdown.
+        base = (question or "").strip() or DEFAULT_ASK_PROMPT
+        prompt = f"{base}\n\n{NO_MARKDOWN}"
+    else:
+        prompt = OCR_PROMPT
     body = json.dumps(build_request(settings, image_png, prompt)).encode("utf-8")
     headers = {
         "content-type": "application/json",
@@ -196,6 +223,8 @@ def extract_text(
     if data.get("stop_reason") == "refusal":
         raise RelayError("o Claude recusou responder sobre esta imagem")
     text = _message_text(data)
+    if mode == "pergunta":
+        text = strip_markdown(text)  # OCR fica literal; resposta vem sem markdown
     if not text:
         raise RelayError("o Claude não devolveu texto nenhum pra esta imagem")
     return text

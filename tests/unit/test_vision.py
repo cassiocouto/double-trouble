@@ -53,7 +53,9 @@ def test_question_mode_uses_the_question():
     vision.extract_text(
         PNG, mode="pergunta", question="Qual o total?", settings=settings(), transport=fake_transport(capture=cap)
     )
-    assert cap["body"]["messages"][0]["content"][1]["text"] == "Qual o total?"
+    sent = cap["body"]["messages"][0]["content"][1]["text"]
+    assert sent.startswith("Qual o total?")
+    assert vision.NO_MARKDOWN in sent  # sempre pede resposta sem markdown
 
 
 def test_question_mode_without_question_uses_default_prompt():
@@ -62,7 +64,30 @@ def test_question_mode_without_question_uses_default_prompt():
         vision.extract_text(
             PNG, mode="pergunta", question=q, settings=settings(), transport=fake_transport(capture=cap)
         )
-        assert cap["body"]["messages"][0]["content"][1]["text"] == vision.DEFAULT_ASK_PROMPT
+        sent = cap["body"]["messages"][0]["content"][1]["text"]
+        assert sent.startswith(vision.DEFAULT_ASK_PROMPT)
+        assert vision.NO_MARKDOWN in sent
+
+
+def test_strip_markdown_removes_markers():
+    raw = "## Título\nIsto é **negrito** e __outro__ e `código`.\n### Sub\ntexto normal"
+    out = vision.strip_markdown(raw)
+    assert out == "Título\nIsto é negrito e outro e código.\nSub\ntexto normal"
+
+
+def test_answer_comes_without_markdown():
+    body = {"content": [{"type": "text", "text": "A resposta é **42** e `x`"}]}
+    out = vision.extract_text(
+        PNG, mode="pergunta", question="?", settings=settings(), transport=fake_transport(reply_body=body)
+    )
+    assert out == "A resposta é 42 e x"
+
+
+def test_ocr_keeps_markdown_literal():
+    # OCR é o texto da tela, não pode mexer: se a tela tem **, fica **
+    body = {"content": [{"type": "text", "text": "git log **HEAD**"}]}
+    out = vision.extract_text(PNG, mode="ocr", settings=settings(), transport=fake_transport(reply_body=body))
+    assert out == "git log **HEAD**"
 
 
 def test_joins_multiple_text_blocks():
