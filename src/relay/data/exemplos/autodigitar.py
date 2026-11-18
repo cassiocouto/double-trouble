@@ -1,11 +1,13 @@
-"""Autodigita um bloco de texto nesta máquina, usando o programa 'autotyper'.
+"""Autodigita um bloco de texto nesta máquina, usando o programa 'tttttt'.
 
-O texto chega como parâmetro, pelo stdin que o agente abre pro comando (não por
-arquivo nem pela área de transferência). O comando repassa esse texto pro
-'autotyper' também pelo stdin, e o 'autotyper' simula o teclado.
+O texto chega **cifrado** como parâmetro, pelo stdin que o agente abre pro
+comando (não por arquivo nem pela área de transferência). Quem cifra é o
+controlador, com a senha compartilhada. O comando só repassa o texto cifrado pro
+'tttttt' (também pelo stdin), e o 'tttttt' decifra com a mesma senha e digita.
 
-O 'autotyper' é um programa seu, instalado à parte nesta máquina e acessível no
-PATH. Ele precisa ler no stdin o texto a digitar e digitar na janela em foco.
+O 'tttttt' é um programa seu, instalado à parte nesta máquina e acessível no
+PATH. Ele lê no stdin o texto cifrado (base64, AES-256-CBC + PBKDF2), decifra com
+a senha dele e digita na janela em foco.
 
 Dica: use o 'atraso' pra ter tempo de clicar na janela certa antes de começar.
 """
@@ -20,13 +22,13 @@ from relay.command import params
 ICONE = "input-keyboard-symbolic"
 CATEGORIA = "Teclado"
 TIMEOUT = 180
-PROGRAMA = "autotyper"
+PROGRAMA = "tttttt"
 
 PARAMETROS = [
     {
         "nome": "texto",
         "tipo": "texto",
-        "rotulo": "Texto pra digitar",
+        "rotulo": "Texto cifrado pra digitar",
         "obrigatorio": True,
         "multilinha": True,
     },
@@ -65,4 +67,4 @@ if r.returncode != 0:
     detalhe = (r.stderr or r.stdout or "sem detalhe").strip().splitlines()
     sys.exit(f"o {PROGRAMA} falhou: {detalhe[-1] if detalhe else 'código ' + str(r.returncode)}")
 
-print(f"digitei {len(texto)} caractere(s) com o {PROGRAMA}")
+print(f"entreguei o texto cifrado pro {PROGRAMA} digitar")

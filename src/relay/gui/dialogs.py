@@ -102,7 +102,33 @@ class PreferencesDialog:
         save.connect("clicked", self._save_claude)
         group.add(save)
         page.add(group)
+
+        self._build_autotype_group(page)
         self.dialog.add(page)
+
+    def _build_autotype_group(self, page) -> None:
+        from ..core import autotype
+
+        group = Adw.PreferencesGroup()
+        group.set_title("Autodigitar (tttttt)")
+        group.set_description(
+            "O botão 'Digitar' cifra o bloco com esta senha (AES-256) e manda pro 'tttttt' "
+            "da outra máquina, que abre com a mesma senha. A senha fica só nesta máquina."
+        )
+        try:
+            senha = autotype.load_password()
+        except Exception:  # config quebrado: começa em branco
+            senha = ""
+        self._tttttt_pass = Adw.PasswordEntryRow()
+        self._tttttt_pass.set_title("Senha do tttttt")
+        self._tttttt_pass.set_text(senha)
+        group.add(self._tttttt_pass)
+        save = button("Salvar senha", "pill", "suggested-action")
+        save.set_halign(Gtk.Align.CENTER)
+        save.set_margin_top(12)
+        save.connect("clicked", self._save_tttttt)
+        group.add(save)
+        page.add(group)
 
     def _save_claude(self, *_):
         from ..core import vision
@@ -115,6 +141,17 @@ class PreferencesDialog:
             self.toast(f"Não consegui salvar ({e})")
             return
         self.toast("Chave salva" if key else "Chave removida")
+
+    def _save_tttttt(self, *_):
+        from ..core import autotype
+
+        senha = self._tttttt_pass.get_text()
+        try:
+            autotype.save_password(senha)
+        except Exception as e:
+            self.toast(f"Não consegui salvar ({e})")
+            return
+        self.toast("Senha salva" if senha else "Senha removida")
 
     def _clear(self) -> None:
         for group, w in self._rows:

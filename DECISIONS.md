@@ -757,3 +757,16 @@ pelo stdin. Como o bloco junta vários recortes, um `texto` de uma linha (teto d
 de uma linha continua preso em 4096. Tem teste que tenta estourar os dois tetos.
 A tela de OCR ganhou o botão "Digitar em <máquina>", que manda o bloco pro
 comando `autodigitar` da máquina.
+
+**D109. O bloco vai cifrado pro `tttttt` (openssl AES-256-CBC + PBKDF2).**
+O programa que digita chama `tttttt` e só aceita texto cifrado. O controlador
+cifra o bloco antes de mandar, com a senha compartilhada, chamando o `openssl`
+do sistema (`core/autotype.py`): `openssl enc -aes-256-cbc -pbkdf2 -base64`. O
+`tttttt` do outro lado abre com a mesma senha
+(`openssl enc -d -aes-256-cbc -pbkdf2 -base64 -pass pass:SENHA`). A senha vai pro
+openssl por variável de ambiente (`env:`), nunca por argumento, pra não aparecer
+no `ps` de outros usuários (um teste confere isso). Ela fica só na máquina de
+quem cifra, num `tttttt.json` modo 600, e é posta nas Configurações. O comando
+`autodigitar` nem vê a senha: só repassa o texto cifrado pro `tttttt`, que
+decifra. Em tempo de execução, só a biblioteca padrão e o openssl do sistema
+(como o scrot do screenshot).
