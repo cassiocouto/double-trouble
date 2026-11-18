@@ -588,3 +588,10 @@ O `--checar` pegou `set_hscrollbar_policy` (não existe no GTK 4; o certo é
 corrigir, adicionei um teste que procura nomes de métodos só do GTK 3
 (`set_hscrollbar_policy`, `show_all`, `get_style_context`...) nos arquivos de
 tela, pra pegar essa classe de erro sem precisar de GTK instalado.
+
+**D91. scrot pra não piscar a tela.**
+Em X11 no GNOME 46 a API de screenshot do shell é bloqueada pra programas de
+fora (como em Wayland), então o comando cai no `gnome-screenshot`, que pisca a
+tela ao salvar e não tem como desligar isso. O `scrot` (e o `maim`, o `import`)
+tira o print sem piscar, e o comando já prefere eles. Quando só o
+`gnome-screenshot` existe e é usado, o comando avisa pra instalar o `scrot`.
