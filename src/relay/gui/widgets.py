@@ -397,6 +397,9 @@ class CropView:
         self.picture = Gtk.Picture()
         self.picture.set_can_shrink(True)
         self.picture.set_content_fit(Gtk.ContentFit.CONTAIN)
+        # Caixa de altura fixa: a imagem cabe dentro, sempre visível, sem depender
+        # de encaixe dentro de um scroll. A camada de desenho por cima recebe o arrasto.
+        self.picture.set_size_request(-1, 440)
         self.overlay = Gtk.Overlay()
         self.overlay.set_child(self.picture)
         self.area = Gtk.DrawingArea()
@@ -407,11 +410,9 @@ class CropView:
         drag.connect("drag-update", self._update)
         drag.connect("drag-end", self._end)
         self.area.add_controller(drag)
-        self.scroller = Gtk.ScrolledWindow()
-        self.scroller.set_min_content_height(420)
-        self.scroller.set_child(self.overlay)
-        self.scroller.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
-        self.widget = self.scroller
+        frame = Gtk.Frame()
+        frame.set_child(self.overlay)
+        self.widget = frame
 
     def set_image(self, data: bytes) -> None:
         self.pixbuf = pixbuf_from_png(data)

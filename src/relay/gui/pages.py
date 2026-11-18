@@ -486,18 +486,27 @@ class CapturePage:
         group.add(self.question)
         box.append(group)
 
+        box.append(
+            label(
+                "1. Tire um print.   2. Arraste o mouse sobre o texto na imagem.   "
+                "3. Clique em “Ler recorte”, que manda o pedaço pro Claude.",
+                "dim-label",
+                "caption",
+            )
+        )
+
         top = Gtk.Box(spacing=12)
         top.set_halign(Gtk.Align.CENTER)
-        self.shot_btn = button("Tirar print", "pill", "suggested-action")
+        self.shot_btn = button("1 · Tirar print", "pill", "suggested-action")
         self.shot_btn.connect("clicked", lambda *_: self._take_shot())
-        self.extract_btn = button("Extrair recorte", "pill")
+        self.extract_btn = button("3 · Ler recorte", "pill", "suggested-action")
         self.extract_btn.connect("clicked", lambda *_: self._extract())
         self.extract_btn.set_sensitive(False)
         top.append(self.shot_btn)
         top.append(self.extract_btn)
         box.append(top)
 
-        self.status = label("", "dim-label", "caption")
+        self.status = label("", "heading")
         box.append(self.status)
 
         self.crop = CropView()
@@ -531,13 +540,16 @@ class CapturePage:
         self.page = page(f"Ler tela · {machine}", scrolled(box, max_width=1200))
         self.vm.changed.connect(self._refresh)
         self.vm.block_changed.connect(self._block_changed)
+        self.status.set_label("Clique em “1 · Tirar print” pra começar.")
         self._refresh()
 
     def _mode(self) -> str:
         return "pergunta" if self.mode.get_selected() == 1 else "ocr"
 
     def _mode_changed(self) -> None:
-        self.question.set_visible(self._mode() == "pergunta")
+        pergunta = self._mode() == "pergunta"
+        self.question.set_visible(pergunta)
+        self.extract_btn.set_label("3 · Perguntar" if pergunta else "3 · Ler recorte")
 
     def _take_shot(self) -> None:
         self.status.set_label("tirando o print…")
@@ -552,7 +564,9 @@ class CapturePage:
                     self.status.set_label(f"não consegui mostrar a imagem ({e})")
                     return
                 self.extract_btn.set_sensitive(True)
-                self.status.set_label("arraste um retângulo sobre o texto e clique em Extrair recorte")
+                self.status.set_label(
+                    "Pronto. Arraste o mouse sobre o texto na imagem (um retângulo azul) e clique em “3 · Ler recorte”."
+                )
             else:
                 r = outcome.result or {}
                 detail = outcome.text_stderr.strip() or r.get("erro") or "o comando não devolveu imagem"
