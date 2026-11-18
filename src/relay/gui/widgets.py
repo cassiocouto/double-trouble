@@ -390,43 +390,38 @@ def png_from_pixbuf(pb: GdkPixbuf.Pixbuf) -> bytes:
 class CropView:
     """Mostra uma imagem e deixa arrastar um retângulo pra recortar um pedaço.
 
-    O retângulo é desenhado numa camada por cima da imagem. As coordenadas da
-    tela viram pixels da imagem levando em conta a escala e as bordas (a imagem
-    cabe na área, centralizada). crop_png() devolve o recorte, ou a imagem
-    inteira se nada foi selecionado.
+    A imagem e o retângulo são desenhados na mesma área (um só DrawingArea), que
+    também recebe o arrasto. Assim o que o mouse toca e o que é desenhado usam a
+    mesma coordenada, sem camadas por cima que ficam com tamanho zero. As
+    coordenadas da tela viram pixels da imagem levando em conta a escala e as
+    bordas (a imagem cabe na área, centralizada). crop_png() devolve o recorte,
+    ou a imagem inteira se nada foi selecionado.
     """
 
     MIN_PIXELS = 4
+    HINT = "Arraste o mouse sobre o texto que você quer ler"
 
     def __init__(self):
         self.pixbuf: GdkPixbuf.Pixbuf | None = None
         self.iw = self.ih = 0
         self._start: tuple[float, float] | None = None
         self._cur: tuple[float, float] | None = None
-        self.picture = Gtk.Picture()
-        self.picture.set_can_shrink(True)
-        self.picture.set_content_fit(Gtk.ContentFit.CONTAIN)
-        # Caixa de altura fixa: a imagem cabe dentro, sempre visível, sem depender
-        # de encaixe dentro de um scroll. A camada de desenho por cima recebe o arrasto.
-        self.picture.set_size_request(-1, 440)
-        self.overlay = Gtk.Overlay()
-        self.overlay.set_child(self.picture)
         self.area = Gtk.DrawingArea()
         self.area.set_draw_func(self._draw)
-        self.overlay.add_overlay(self.area)
+        self.area.set_size_request(-1, 520)
+        self.area.set_hexpand(True)
         drag = Gtk.GestureDrag()
         drag.connect("drag-begin", self._begin)
         drag.connect("drag-update", self._update)
         drag.connect("drag-end", self._end)
         self.area.add_controller(drag)
         frame = Gtk.Frame()
-        frame.set_child(self.overlay)
+        frame.set_child(self.area)
         self.widget = frame
 
     def set_image(self, data: bytes) -> None:
         self.pixbuf = pixbuf_from_png(data)
         self.iw, self.ih = self.pixbuf.get_width(), self.pixbuf.get_height()
-        self.picture.set_paintable(Gdk.Texture.new_for_pixbuf(self.pixbuf))
         self._start = self._cur = None
         self.area.queue_draw()
 
@@ -456,8 +451,22 @@ class CropView:
         self._update(gesture, ox, oy)
 
     def _draw(self, area, cr, w, h):
-        if not (self._start and self._cur):
+        geom = self._geom()
+        if self.pixbuf is None or geom is None:
             return
+        scale, ox, oy, dw, _dh = geom
+        cr.save()
+        cr.translate(ox, oy)
+        cr.scale(scale, scale)
+        Gdk.cairo_set_source_pixbuf(cr, self.pixbuf, 0, 0)
+        cr.paint()
+        cr.restore()
+        if self._start and self._cur:
+            self._draw_selection(cr)
+        else:
+            self._draw_hint(cr, ox, oy, dw)
+
+    def _draw_selection(self, cr) -> None:
         x0, y0 = self._start
         x1, y1 = self._cur
         rx, ry = min(x0, x1), min(y0, y1)
@@ -465,10 +474,25 @@ class CropView:
         cr.set_source_rgba(0.2, 0.5, 0.9, 0.2)
         cr.rectangle(rx, ry, rw, rh)
         cr.fill()
-        cr.set_source_rgba(0.2, 0.5, 0.9, 0.9)
-        cr.set_line_width(1.5)
+        cr.set_source_rgba(0.2, 0.5, 0.9, 0.95)
+        cr.set_line_width(2.0)
         cr.rectangle(rx, ry, rw, rh)
         cr.stroke()
+
+    def _draw_hint(self, cr, ox, oy, dw) -> None:
+        cr.select_font_face("Sans")
+        cr.set_font_size(15)
+        ext = cr.text_extents(self.HINT)
+        pad = 10
+        bw, bh = ext.width + pad * 2, ext.height + pad * 2
+        bx = ox + (dw - bw) / 2
+        by = oy + 12
+        cr.set_source_rgba(0.1, 0.1, 0.12, 0.72)
+        cr.rectangle(bx, by, bw, bh)
+        cr.fill()
+        cr.set_source_rgba(1, 1, 1, 0.96)
+        cr.move_to(bx + pad - ext.x_bearing, by + pad - ext.y_bearing)
+        cr.show_text(self.HINT)
 
     def selection_pixels(self):
         geom = self._geom()

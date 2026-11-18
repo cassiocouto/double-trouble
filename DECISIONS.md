@@ -613,3 +613,15 @@ conteúdo ainda bate com esse hash (você não editou) é atualizado sozinho qua
 a versão nova muda; um que você editou fica intacto (só troca com
 `--atualizar`, que faz backup). Instalações antigas não têm o hash, então o
 primeiro `--atualizar` é manual; depois disso é automático.
+
+**D94. O recorte vira um só DrawingArea, e os botões perdem os números.**
+A área de recorte era um `Overlay` com a imagem embaixo e um `DrawingArea`
+transparente por cima pra receber o arrasto. O `DrawingArea` por cima ficava com
+tamanho zero, então não dava pra arrastar nada: não aparecia retângulo de
+seleção. Agora é um só `DrawingArea` que desenha a própria imagem (via Cairo) e
+o retângulo, e recebe o arrasto. O que o mouse toca e o que é desenhado usam a
+mesma coordenada. A imagem também ficou maior (520 px de altura) e mostra uma
+dica escrita por cima ("Arraste o mouse sobre o texto…") enquanto nada está
+selecionado. Os botões "1 · Tirar print" e "3 · Ler recorte" (sem um "2 ·", que
+era o arrasto) viraram só "Tirar print" e "Ler recorte", e o "Ler recorte" ficou
+logo abaixo da imagem, do lado de onde a seleção é feita.
