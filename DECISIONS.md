@@ -761,9 +761,12 @@ comando `autodigitar` da máquina.
 **D109. O bloco vai cifrado pro `tttttt` (openssl AES-256-CBC + PBKDF2).**
 O programa que digita chama `tttttt` e só aceita texto cifrado. O controlador
 cifra o bloco antes de mandar, com a senha compartilhada, chamando o `openssl`
-do sistema (`core/autotype.py`): `openssl enc -aes-256-cbc -pbkdf2 -base64`. O
+do sistema (`core/autotype.py`), na receita exata que o `tttttt` exige:
+`openssl enc -aes-256-cbc -pbkdf2 -iter 600000 -md sha256 -salt -a -A`. O
 `tttttt` do outro lado abre com a mesma senha
-(`openssl enc -d -aes-256-cbc -pbkdf2 -base64 -pass pass:SENHA`). A senha vai pro
+(`openssl enc -d -aes-256-cbc -pbkdf2 -iter 600000 -md sha256 -a -A -pass pass:SENHA`).
+O `-A` deixa o base64 numa linha só, e o `-iter 600000` é obrigatório (o `tttttt`
+recusa sem ele). A senha vai pro
 openssl por variável de ambiente (`env:`), nunca por argumento, pra não aparecer
 no `ps` de outros usuários (um teste confere isso). Ela fica só na máquina de
 quem cifra, num `tttttt.json` modo 600, e é posta nas Configurações. O comando
