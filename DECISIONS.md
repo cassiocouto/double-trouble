@@ -674,3 +674,13 @@ crescendo com a janela sem distorcer (continua `CONTAIN`).
 "Ler o texto" e "Perguntar ao Claude" eram um `Adw.ComboRow` (dropdown). Viraram
 dois `Gtk.CheckButton` agrupados (radio), que mostram as duas opções de uma vez.
 O campo da pergunta só aparece no modo "Perguntar".
+
+**D101. O recorte é grampeado na borda da imagem (fim de um segfault).**
+Clicar em "Ler recorte" dava segfault. O `crop_png` recorta com
+`GdkPixbuf.new_subpixbuf`, que lê fora da memória (e o programa cai) se o
+retângulo passar da borda — `x + largura > largura da imagem` ou
+`y + altura > altura`. Por causa do arredondamento, uma seleção encostando na
+borda (tipo o título lá embaixo) estourava por um pixel. Agora a conta de
+seleção → pixels mora em `gui/geometry.py` (sem GTK, dá pra testar) e grampeia
+tudo dentro de `[0, largura) x [0, altura)`. Tem teste com 5000 seleções
+aleatórias tentando estourar as bordas.

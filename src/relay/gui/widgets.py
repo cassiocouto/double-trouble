@@ -18,6 +18,7 @@ import gi as _gi  # noqa: E402
 _gi.require_version("GdkPixbuf", "2.0")
 from gi.repository import Adw, Gdk, GdkPixbuf, Gio, GLib, GObject, Gtk, Pango  # noqa: E402
 
+from . import geometry  # noqa: E402
 from .form import Field, FormModel  # noqa: E402
 
 DEFAULT_ICON = "system-run-symbolic"
@@ -583,19 +584,12 @@ class CropView:
         if not (self._start and self._cur and geom):
             return None
         scale, ox, oy, _dw, _dh = geom
-        xs = sorted((self._start[0], self._cur[0]))
-        ys = sorted((self._start[1], self._cur[1]))
-        x0 = max(0, (xs[0] - ox) / scale)
-        y0 = max(0, (ys[0] - oy) / scale)
-        x1 = min(self.iw, (xs[1] - ox) / scale)
-        y1 = min(self.ih, (ys[1] - oy) / scale)
-        px, py = round(x0), round(y0)
-        pw, ph = round(x1 - x0), round(y1 - y0)
-        if enforce_min and (pw < self.MIN_PIXELS or ph < self.MIN_PIXELS):
+        rect = geometry.crop_rect(self._start, self._cur, scale, ox, oy, self.iw, self.ih)
+        if rect is None:
             return None
-        if pw <= 0 or ph <= 0:
+        if enforce_min and (rect[2] < self.MIN_PIXELS or rect[3] < self.MIN_PIXELS):
             return None
-        return px, py, pw, ph
+        return rect
 
     def selection_pixels(self):
         return self._pixels(enforce_min=True)
