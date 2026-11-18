@@ -684,3 +684,21 @@ borda (tipo o título lá embaixo) estourava por um pixel. Agora a conta de
 seleção → pixels mora em `gui/geometry.py` (sem GTK, dá pra testar) e grampeia
 tudo dentro de `[0, largura) x [0, altura)`. Tem teste com 5000 seleções
 aleatórias tentando estourar as bordas.
+
+**D102. Desliga o OpenGL no GTK (`GDK_DEBUG=gl-disable`) — a causa real do
+segfault.**
+O `relay-gui` caía com segfault na máquina da Cass (ao recortar, ao
+redimensionar). A pilha de queda não vinha (faulthandler só mostrava o
+cabeçalho de uma thread, sem frames Python) e o mesmo código roda liso num GTK
+4.14 igual, sob Xvfb — os dois sinais de que o tombo é no driver de vídeo, não
+no código. Pôr só `GSK_RENDERER=cairo` (D98) não resolveu: mesmo assim o GDK
+cria um contexto GL (dá pra ver os avisos de libEGL), e é nele que a placa cai.
+`GDK_DEBUG=gl-disable` tira o OpenGL do GDK de vez (os avisos somem) e o GSK usa
+o renderizador de software sozinho. Fica ligado por padrão com `setdefault`,
+então quem tiver uma placa boa pode reativar pela variável.
+
+**D103. Recorte sem `Gtk.Fixed` (faxina).**
+De quebra, o retângulo e o rótulo de tamanho saíram do `Gtk.Fixed` e viraram
+filhos diretos do `Gtk.Overlay`, posicionados por margem. É o jeito mais comum e
+evita o `Gtk.Fixed`, que tem alocação de tamanho esquisita. Não era a causa do
+segfault (o código com `Fixed` roda liso no teste), é só pra simplificar.

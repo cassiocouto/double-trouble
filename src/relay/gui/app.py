@@ -28,10 +28,13 @@ def main(argv: list[str] | None = None) -> int:
         global _CRASH_FILE
         _CRASH_FILE = open(os.path.join(tempfile.gettempdir(), "relay-crash.txt"), "w")  # noqa: SIM115
         faulthandler.enable(file=_CRASH_FILE, all_threads=True)
-    # Renderizador de software por padrão. O renderizador GL do GTK 4 trava
-    # (pisca a tela e dá segfault) em várias placas/drivers, ainda mais com uma
-    # imagem grande na tela. O de software é estável e usa a libcairo do sistema
-    # (não precisa do python3-gi-cairo). Quem quiser GL define GSK_RENDERER.
+    # Desliga o OpenGL no GTK. O caminho GL trava (pisca a tela e dá segfault)
+    # em várias placas/drivers, ainda mais com uma imagem grande. Só pôr o
+    # renderizador em "cairo" não basta: o GDK ainda cria um contexto GL (os
+    # avisos de libEGL), e é aí que a placa cai. `gl-disable` tira o GL de vez,
+    # e o GSK cai pro renderizador de software (cairo) sozinho. Quem quiser GL
+    # define GDK_DEBUG/GSK_RENDERER por conta.
+    os.environ.setdefault("GDK_DEBUG", "gl-disable")
     os.environ.setdefault("GSK_RENDERER", "cairo")
     try:
         import gi
