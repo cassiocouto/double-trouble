@@ -487,24 +487,11 @@ class CapturePage:
         group.add(self.question)
         box.append(group)
 
-        box.append(
-            label(
-                "1. Tire um print.   2. Arraste o mouse sobre o texto na imagem.   "
-                "3. Clique em “Ler recorte”, que manda o pedaço pro Claude.",
-                "dim-label",
-                "caption",
-            )
-        )
-
         top = Gtk.Box(spacing=12)
         top.set_halign(Gtk.Align.CENTER)
-        self.shot_btn = button("1 · Tirar print", "pill", "suggested-action")
+        self.shot_btn = button("Tirar print", "pill", "suggested-action")
         self.shot_btn.connect("clicked", lambda *_: self._take_shot())
-        self.extract_btn = button("3 · Ler recorte", "pill", "suggested-action")
-        self.extract_btn.connect("clicked", lambda *_: self._extract())
-        self.extract_btn.set_sensitive(False)
         top.append(self.shot_btn)
-        top.append(self.extract_btn)
         box.append(top)
 
         self.status = label("", "heading")
@@ -512,6 +499,16 @@ class CapturePage:
 
         self.crop = CropView()
         box.append(self.crop.widget)
+
+        # O botão de ler o recorte fica logo abaixo da imagem, onde a seleção é
+        # feita, em vez de longe dela num passo numerado.
+        under = Gtk.Box(spacing=12)
+        under.set_halign(Gtk.Align.CENTER)
+        self.extract_btn = button("Ler recorte", "pill", "suggested-action")
+        self.extract_btn.connect("clicked", lambda *_: self._extract())
+        self.extract_btn.set_sensitive(False)
+        under.append(self.extract_btn)
+        box.append(under)
 
         box.append(label("Texto juntado", "heading"))
         self.textview = Gtk.TextView()
@@ -545,11 +542,11 @@ class CapturePage:
             try:
                 self.crop.set_image(prefill)
                 self.extract_btn.set_sensitive(True)
-                self.status.set_label("Arraste o mouse sobre o texto na imagem e clique em “3 · Ler recorte”.")
+                self.status.set_label("Arraste o mouse sobre o texto e clique em “Ler recorte”.")
             except Exception:
-                self.status.set_label("Clique em “1 · Tirar print” pra começar.")
+                self.status.set_label("Clique em “Tirar print” pra começar.")
         else:
-            self.status.set_label("Clique em “1 · Tirar print” pra começar.")
+            self.status.set_label("Clique em “Tirar print” pra começar.")
         self._refresh()
 
     def _mode(self) -> str:
@@ -558,7 +555,7 @@ class CapturePage:
     def _mode_changed(self) -> None:
         pergunta = self._mode() == "pergunta"
         self.question.set_visible(pergunta)
-        self.extract_btn.set_label("3 · Perguntar" if pergunta else "3 · Ler recorte")
+        self.extract_btn.set_label("Perguntar" if pergunta else "Ler recorte")
 
     def _take_shot(self) -> None:
         self.status.set_label("tirando o print…")
@@ -574,7 +571,7 @@ class CapturePage:
                     return
                 self.extract_btn.set_sensitive(True)
                 self.status.set_label(
-                    "Pronto. Arraste o mouse sobre o texto na imagem (um retângulo azul) e clique em “3 · Ler recorte”."
+                    "Pronto. Arraste o mouse sobre o texto e clique em “Ler recorte”, logo abaixo da imagem."
                 )
             else:
                 r = outcome.result or {}
