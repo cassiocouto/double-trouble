@@ -506,9 +506,13 @@ class CropView:
         self.widget = frame
 
     def set_image(self, data: bytes) -> None:
-        self.pixbuf = pixbuf_from_png(data)
+        self.pixbuf = pixbuf_from_png(data)  # guardado só pra recortar
         self.iw, self.ih = self.pixbuf.get_width(), self.pixbuf.get_height()
-        self.picture.set_paintable(Gdk.Texture.new_for_pixbuf(self.pixbuf))
+        # A textura que aparece na tela vem dos bytes do PNG (igual ao ImageView,
+        # que funciona), e NÃO de new_for_pixbuf: um pixbuf com rowstride "folgado"
+        # vira uma textura cujo download, na hora de desenhar, lê fora da memória
+        # e dá segfault (gdk_texture_downloader_download_into).
+        self.picture.set_paintable(Gdk.Texture.new_from_bytes(GLib.Bytes.new(data)))
         self._start = self._cur = None
         self._apply_zoom()
         self._place()

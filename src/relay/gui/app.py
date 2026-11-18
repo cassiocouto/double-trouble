@@ -28,12 +28,10 @@ def main(argv: list[str] | None = None) -> int:
         global _CRASH_FILE
         _CRASH_FILE = open(os.path.join(tempfile.gettempdir(), "relay-crash.txt"), "w")  # noqa: SIM115
         faulthandler.enable(file=_CRASH_FILE, all_threads=True)
-    # Tira todos os caminhos de hardware do GTK, que travam (piscam a tela e dão
-    # segfault, num thread do driver, sem pilha Python) em várias placas. Sobra o
-    # desenho por software (cairo), estável. Desliga OpenGL, Vulkan e dmabuf no
-    # GDK, manda o GSK usar cairo e tira o backend de mídia (GStreamer, que puxa
-    # GL por fora). Quem tiver uma placa boa reativa pelas variáveis.
-    os.environ.setdefault("GDK_DEBUG", "gl-disable:vulkan-disable:dmabuf-disable")
+    # Desenho por software, pra não depender da placa. O renderizador GL do GTK
+    # trava em várias placas, e o backend de mídia (GStreamer) puxa GL por fora.
+    # (O nome dos flags de GDK_DEBUG muda entre versões, então não mexemos lá.)
+    # Quem tiver uma placa boa reativa pelas variáveis.
     os.environ.setdefault("GSK_RENDERER", "cairo")
     os.environ.setdefault("GTK_MEDIA", "none")
     try:
