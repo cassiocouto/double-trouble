@@ -644,3 +644,14 @@ topo da tela de rodar. Agora ele fica atrás de um botão (i) do lado do nome do
 comando. E a caixa de saída deixou de ter altura fixa de 260 px (uma saída de
 uma linha virava um retângulo preto enorme): cresce com o conteúdo até um teto e
 só então rola.
+
+**D97. O recorte não usa cairo: o retângulo é widget.**
+Desenhar com cairo (`DrawingArea` + draw func) quebrava na máquina da Cass com
+`Couldn't find foreign struct converter for 'cairo.Context'` (falta o
+`python3-gi-cairo`) e chegava a dar segfault. Em vez de pedir pra instalar outro
+pacote, tiramos o cairo de vez (era o único lugar que usava). Agora o retângulo
+de seleção, o rótulo com o tamanho em pixels e a dica são widgets normais
+(`Gtk.Box`, `Gtk.Label`) postos por cima da imagem num `Gtk.Fixed`, com um CSS
+pequeno pra borda e o fundo. O arrasto mostra o retângulo na hora, com a borda
+azul e o tamanho, pra ter feedback de verdade enquanto seleciona. Só precisa da
+biblioteca padrão e do PyGObject, como manda o `CLAUDE.md`.

@@ -391,21 +391,64 @@ def png_from_pixbuf(pb: GdkPixbuf.Pixbuf) -> bytes:
     return bytes(buf)
 
 
+_CROP_CSS = """
+.crop-selection {
+  border: 2px solid #3584e4;
+  background-color: rgba(53, 132, 228, 0.18);
+  border-radius: 2px;
+}
+.crop-size {
+  background-color: rgba(0, 0, 0, 0.78);
+  color: #ffffff;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+.crop-hint {
+  background-color: rgba(0, 0, 0, 0.72);
+  color: #ffffff;
+  padding: 6px 12px;
+  border-radius: 6px;
+}
+"""
+
+_crop_css_loaded = False
+
+
+def _ensure_crop_css() -> None:
+    """Carrega o CSS do recorte uma vez só, se houver uma tela."""
+    global _crop_css_loaded
+    if _crop_css_loaded:
+        return
+    display = Gdk.Display.get_default()
+    if display is None:
+        return
+    provider = Gtk.CssProvider()
+    if hasattr(provider, "load_from_string"):
+        provider.load_from_string(_CROP_CSS)
+    else:
+        provider.load_from_data(_CROP_CSS.encode("utf-8"))
+    Gtk.StyleContext.add_provider_for_display(display, provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+    _crop_css_loaded = True
+
+
 class CropView:
     """Mostra uma imagem e deixa arrastar um retângulo pra recortar um pedaço.
 
-    A imagem é desenhada por um `Gtk.Picture` (o mesmo jeito que já funciona na
-    tela do print). Por cima fica um `DrawingArea` transparente que só desenha o
-    retângulo de seleção; ele não pega clique (`can_target = False`), então o
-    arrasto vai direto pro `Picture`, e os dois usam a mesma coordenada. Com
-    "tamanho real" a imagem fica em 100% e a área rola. crop_png() devolve o
-    recorte, ou a imagem inteira se nada foi selecionado.
+    A imagem é um `Gtk.Picture` (o mesmo jeito que já funciona na tela do print).
+    O retângulo de seleção e a dica são widgets de verdade posicionados num
+    `Gtk.Fixed` por cima — nada de desenho com cairo, que nem sempre está
+    disponível. As camadas de cima não pegam clique (`can_target = False`), então
+    o arrasto vai direto pro `Picture`. Com "tamanho real" a imagem fica em 100%
+    e a área rola. crop_png() devolve o recorte, ou a imagem inteira se nada foi
+    selecionado.
     """
 
     MIN_PIXELS = 4
     HINT = "Arraste o mouse sobre o texto que você quer ler"
 
     def __init__(self):
+        _ensure_crop_css()
         self.pixbuf: GdkPixbuf.Pixbuf | None = None
         self.iw = self.ih = 0
         self.full_size = False
@@ -417,15 +460,31 @@ class CropView:
         self.picture.set_content_fit(Gtk.ContentFit.CONTAIN)
         self.picture.set_cursor(Gdk.Cursor.new_from_name("crosshair", None))
 
-        self.area = Gtk.DrawingArea()
-        self.area.set_draw_func(self._draw)
-        self.area.set_can_target(False)  # o clique passa pra imagem embaixo
-        self.area.set_halign(Gtk.Align.FILL)
-        self.area.set_valign(Gtk.Align.FILL)
+        # Camada livre por cima da imagem: o retângulo e o rótulo de tamanho.
+        self.fixed = Gtk.Fixed()
+        self.fixed.set_can_target(False)
+        self.selbox = Gtk.Box()
+        self.selbox.add_css_class("crop-selection")
+        self.selbox.set_can_target(False)
+        self.selbox.set_visible(False)
+        self.sizelbl = Gtk.Label()
+        self.sizelbl.add_css_class("crop-size")
+        self.sizelbl.set_can_target(False)
+        self.sizelbl.set_visible(False)
+        self.fixed.put(self.selbox, 0, 0)
+        self.fixed.put(self.sizelbl, 0, 0)
+
+        self.hint = label(self.HINT, "crop-hint")
+        self.hint.set_halign(Gtk.Align.CENTER)
+        self.hint.set_valign(Gtk.Align.START)
+        self.hint.set_margin_top(14)
+        self.hint.set_can_target(False)
+        self.hint.set_visible(False)
 
         self.overlay = Gtk.Overlay()
         self.overlay.set_child(self.picture)
-        self.overlay.add_overlay(self.area)
+        self.overlay.add_overlay(self.fixed)
+        self.overlay.add_overlay(self.hint)
 
         drag = Gtk.GestureDrag()
         drag.connect("drag-begin", self._begin)
@@ -446,6 +505,7 @@ class CropView:
         self.picture.set_paintable(Gdk.Texture.new_for_pixbuf(self.pixbuf))
         self._start = self._cur = None
         self._apply_zoom()
+        self._place()
 
     @property
     def has_image(self) -> bool:
@@ -455,6 +515,7 @@ class CropView:
         self.full_size = flag
         self._start = self._cur = None  # a coordenada muda de escala
         self._apply_zoom()
+        self._place()
 
     def _apply_zoom(self) -> None:
         if self.full_size:
@@ -467,10 +528,9 @@ class CropView:
             self.picture.set_halign(Gtk.Align.FILL)
             self.picture.set_valign(Gtk.Align.FILL)
             self.scroller.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
-        self.area.queue_draw()
 
     def _geom(self):
-        w, h = self.area.get_width(), self.area.get_height()
+        w, h = self.picture.get_width(), self.picture.get_height()
         if not (w and h and self.iw and self.ih):
             return None
         if self.full_size:
@@ -482,56 +542,41 @@ class CropView:
     def _begin(self, gesture, x, y):
         self._start = (x, y)
         self._cur = (x, y)
-        self.area.queue_draw()
+        self._place()
 
     def _update(self, gesture, ox, oy):
         if self._start:
             self._cur = (self._start[0] + ox, self._start[1] + oy)
-            self.area.queue_draw()
+            self._place()
 
     def _end(self, gesture, ox, oy):
         self._update(gesture, ox, oy)
 
-    def _draw(self, area, cr, w, h):
-        if self.pixbuf is None:
+    def _place(self) -> None:
+        """Põe o retângulo e o rótulo no lugar, ou mostra a dica se não há seleção."""
+        if not (self._start and self._cur):
+            self.selbox.set_visible(False)
+            self.sizelbl.set_visible(False)
+            self.hint.set_visible(self.pixbuf is not None)
             return
-        if self._start and self._cur:
-            self._draw_selection(cr)
-            return
-        geom = self._geom()
-        if geom is not None:
-            _scale, ox, oy, dw, _dh = geom
-            self._draw_hint(cr, ox, oy, dw)
-
-    def _draw_selection(self, cr) -> None:
+        self.hint.set_visible(False)
         x0, y0 = self._start
         x1, y1 = self._cur
-        rx, ry = min(x0, x1), min(y0, y1)
-        rw, rh = abs(x1 - x0), abs(y1 - y0)
-        cr.set_source_rgba(0.2, 0.5, 0.9, 0.2)
-        cr.rectangle(rx, ry, rw, rh)
-        cr.fill()
-        cr.set_source_rgba(0.2, 0.5, 0.9, 0.95)
-        cr.set_line_width(2.0)
-        cr.rectangle(rx, ry, rw, rh)
-        cr.stroke()
+        rx, ry = int(min(x0, x1)), int(min(y0, y1))
+        rw, rh = int(abs(x1 - x0)), int(abs(y1 - y0))
+        self.selbox.set_size_request(max(1, rw), max(1, rh))
+        self.fixed.move(self.selbox, rx, ry)
+        self.selbox.set_visible(True)
+        sel = self._pixels(enforce_min=False)
+        if sel is not None:
+            self.sizelbl.set_label(f"{sel[2]} × {sel[3]} px")
+            ly = ry - 24 if ry >= 24 else ry + 4
+            self.fixed.move(self.sizelbl, rx, ly)
+            self.sizelbl.set_visible(True)
+        else:
+            self.sizelbl.set_visible(False)
 
-    def _draw_hint(self, cr, ox, oy, dw) -> None:
-        cr.select_font_face("Sans")
-        cr.set_font_size(15)
-        ext = cr.text_extents(self.HINT)
-        pad = 10
-        bw, bh = ext.width + pad * 2, ext.height + pad * 2
-        bx = ox + (dw - bw) / 2
-        by = oy + 12
-        cr.set_source_rgba(0.1, 0.1, 0.12, 0.72)
-        cr.rectangle(bx, by, bw, bh)
-        cr.fill()
-        cr.set_source_rgba(1, 1, 1, 0.96)
-        cr.move_to(bx + pad - ext.x_bearing, by + pad - ext.y_bearing)
-        cr.show_text(self.HINT)
-
-    def selection_pixels(self):
+    def _pixels(self, enforce_min: bool = True):
         geom = self._geom()
         if not (self._start and self._cur and geom):
             return None
@@ -544,9 +589,14 @@ class CropView:
         y1 = min(self.ih, (ys[1] - oy) / scale)
         px, py = round(x0), round(y0)
         pw, ph = round(x1 - x0), round(y1 - y0)
-        if pw < self.MIN_PIXELS or ph < self.MIN_PIXELS:
+        if enforce_min and (pw < self.MIN_PIXELS or ph < self.MIN_PIXELS):
+            return None
+        if pw <= 0 or ph <= 0:
             return None
         return px, py, pw, ph
+
+    def selection_pixels(self):
+        return self._pixels(enforce_min=True)
 
     def crop_png(self) -> bytes:
         if self.pixbuf is None:
@@ -559,4 +609,4 @@ class CropView:
 
     def clear_selection(self) -> None:
         self._start = self._cur = None
-        self.area.queue_draw()
+        self._place()
