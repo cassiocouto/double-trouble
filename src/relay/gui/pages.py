@@ -716,13 +716,20 @@ class CapturePage:
         self.win.toast("Bloco copiado e começando um novo")
 
     def _autotype(self) -> None:
-        """Manda o bloco pra máquina autodigitar (comando 'autodigitar' lá)."""
+        """Cifra o bloco e manda pra máquina autodigitar (comando 'autodigitar')."""
+        from ..core import autotype
+
         bloco = self.vm.block
         if not bloco.strip():
             self.win.toast("o bloco está vazio")
             return
-        if len(bloco) > MAX_MULTILINE:
-            self.win.toast(f"o bloco tem {len(bloco)} caracteres (máximo {MAX_MULTILINE})")
+        try:
+            cifrado = autotype.encrypt(bloco, autotype.load_password())
+        except Exception as e:
+            self.win.toast(str(e))
+            return
+        if len(cifrado) > MAX_MULTILINE:
+            self.win.toast(f"o bloco é grande demais (cifrado passa de {MAX_MULTILINE})")
             return
         self.win.toast(f"mandando pra {self.machine} digitar…")
 
@@ -734,4 +741,6 @@ class CapturePage:
                 msg = outcome.text_stderr.strip() or r.get("erro") or f"código {r.get('codigo')}"
                 self.win.toast(f"não digitou: {msg[:140]}")
 
-        self.win.service.run(self.machine, "autodigitar", {"texto": bloco}, None, lambda ev: None, done, self.win.toast)
+        self.win.service.run(
+            self.machine, "autodigitar", {"texto": cifrado}, None, lambda ev: None, done, self.win.toast
+        )
