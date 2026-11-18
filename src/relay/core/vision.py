@@ -35,6 +35,15 @@ OCR_PROMPT = (
     "comentário seu, sem aspas e sem blocos de código."
 )
 
+# Usado no modo "pergunta" quando você não digita nada: o modelo faz o melhor
+# que dá com o que está no recorte.
+DEFAULT_ASK_PROMPT = (
+    "Olhe este recorte da tela e me ajude da melhor forma possível. Se houver "
+    "uma pergunta ou um exercício, responda. Se houver código, explique o que "
+    "ele faz, mostre os problemas ou complete o que falta. Senão, diga o que é "
+    "importante aqui e o que fazer a seguir. Responda em português do Brasil."
+)
+
 
 @dataclass
 class VisionSettings:
@@ -167,12 +176,8 @@ def extract_text(
     """Manda a imagem e devolve o texto. mode 'ocr' lê o texto; 'pergunta' responde `question`."""
     if not settings.configured:
         raise ConfigError("falta a chave da API do Claude. Ponha ela nas Configurações")
-    if mode == "pergunta":
-        prompt = (question or "").strip()
-        if not prompt:
-            raise RelayError("digite a pergunta sobre o recorte")
-    else:
-        prompt = OCR_PROMPT
+    # Modo pergunta sem texto: o modelo faz o melhor que dá com o recorte.
+    prompt = ((question or "").strip() or DEFAULT_ASK_PROMPT) if mode == "pergunta" else OCR_PROMPT
     body = json.dumps(build_request(settings, image_png, prompt)).encode("utf-8")
     headers = {
         "content-type": "application/json",

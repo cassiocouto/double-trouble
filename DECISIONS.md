@@ -718,3 +718,12 @@ renderizadores (GL e cairo): a textura é que estava ruim, não o renderizador.
 As tentativas de desligar GL por `GDK_DEBUG` (D102) foram tiro no escuro — o GTK
 novo da Cass nem reconhece esses flags —, então saíram; ficou só o
 `GSK_RENDERER=cairo` e o `GTK_MEDIA=none`, por garantia.
+
+**D105. Perguntar sem pergunta, e um rodinha enquanto o Claude trabalha.**
+No modo "Perguntar", deixar a pergunta em branco antes dava erro ("digite a
+pergunta") e parecia que nada acontecia. Agora, sem pergunta, manda um prompt
+padrão (`DEFAULT_ASK_PROMPT`) que pede pro modelo fazer o melhor com o recorte:
+responder, explicar ou completar código. O campo virou "(opcional)". E a tela de
+OCR ganhou um `Gtk.Spinner` do lado do status, que gira enquanto tira o print,
+lê o texto ou pergunta, pra não parecer travado. (`Gtk.Spinner`, não
+`Adw.Spinner`, que é de libadwaita mais nova.)

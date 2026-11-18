@@ -505,7 +505,10 @@ class CapturePage:
         self.qgroup = Adw.PreferencesGroup()
         self.question = Adw.EntryRow()
         self.question.set_use_markup(False)
-        self.question.set_title("Pergunta sobre o recorte")
+        self.question.set_title("Pergunta sobre o recorte (opcional)")
+        self.question.set_tooltip_text(
+            "Em branco, o Claude olha o recorte e faz o melhor: responde, explica ou completa."
+        )
         self.qgroup.add(self.question)
         self.qgroup.set_visible(False)
         box.append(self.qgroup)
@@ -517,8 +520,14 @@ class CapturePage:
         top.append(self.shot_btn)
         box.append(top)
 
+        status_row = Gtk.Box(spacing=8)
+        status_row.set_halign(Gtk.Align.CENTER)
+        self.spinner = Gtk.Spinner()
+        self.spinner.set_visible(False)
         self.status = label("", "heading")
-        box.append(self.status)
+        status_row.append(self.spinner)
+        status_row.append(self.status)
+        box.append(status_row)
 
         img_head = Gtk.Box(spacing=6)
         img_head.append(label("Imagem", "heading"))
@@ -613,9 +622,11 @@ class CapturePage:
     def _take_shot(self) -> None:
         self.status.set_label("tirando o print…")
         self.shot_btn.set_sensitive(False)
+        self._busy(True)
 
         def done(outcome) -> None:
             self.shot_btn.set_sensitive(True)
+            self._busy(False)
             if outcome.artifact is not None:
                 try:
                     self.crop.set_image(outcome.artifact)
@@ -635,6 +646,7 @@ class CapturePage:
 
         def fail(msg: str) -> None:
             self.shot_btn.set_sensitive(True)
+            self._busy(False)
             self.status.set_label(msg)
 
         self.win.service.run(self.machine, "screenshot", {"cursor": False}, None, lambda ev: None, done, fail)
@@ -647,8 +659,9 @@ class CapturePage:
         except Exception as e:
             self.status.set_label(f"não consegui recortar ({e})")
             return
-        q = self.question.get_text() if self._mode() == "pergunta" else None
-        self.status.set_label("lendo o recorte com o Claude…")
+        pergunta = self._mode() == "pergunta"
+        q = self.question.get_text() if pergunta else None
+        self.status.set_label("perguntando ao Claude…" if pergunta else "lendo o recorte com o Claude…")
         self.vm.add_crop(png, self._mode(), q)
 
     def _block_changed(self, text: str) -> None:
@@ -665,8 +678,17 @@ class CapturePage:
         self.vm.set_block(self.buffer.get_text(self.buffer.get_start_iter(), self.buffer.get_end_iter(), False))
         self._syncing = False
 
+    def _busy(self, on: bool) -> None:
+        """Mostra o rodinha enquanto o Claude trabalha, pra não parecer travado."""
+        self.spinner.set_visible(on)
+        if on:
+            self.spinner.start()
+        else:
+            self.spinner.stop()
+
     def _refresh(self) -> None:
         busy = self.vm.busy
+        self._busy(busy)
         self.extract_btn.set_sensitive(self.crop.has_image and not busy)
         self.copy_btn.set_sensitive(self.vm.has_text)
         self.release_btn.set_sensitive(self.vm.has_text)
