@@ -543,7 +543,6 @@ class CapturePage:
         box.append(img_head)
 
         self.crop = CropView()
-        self.crop.widget.set_vexpand(True)  # cresce com a janela (sem distorcer)
         box.append(self.crop.widget)
 
         # O botão de ler o recorte fica logo abaixo da imagem, onde a seleção é
@@ -565,13 +564,19 @@ class CapturePage:
         box.append(label("Texto juntado", "heading"))
         self.textview = Gtk.TextView()
         self.textview.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
-        self.textview.set_size_request(-1, 160)
         for side in ("top", "bottom", "left", "right"):
             getattr(self.textview, f"set_{side}_margin")(8)
         self.buffer = self.textview.get_buffer()
         self.buffer.connect("changed", self._text_edited)
+        # O texto fica numa caixa de altura limitada que rola por dentro. Sem
+        # isso ele crescia sem parar e empurrava os botões pra fora da janela.
+        text_scroll = Gtk.ScrolledWindow()
+        text_scroll.set_min_content_height(200)
+        text_scroll.set_max_content_height(320)
+        text_scroll.set_propagate_natural_height(True)
+        text_scroll.set_child(self.textview)
         frame = Gtk.Frame()
-        frame.set_child(self.textview)
+        frame.set_child(text_scroll)
         box.append(frame)
 
         actions = Gtk.Box(spacing=12)
@@ -587,12 +592,9 @@ class CapturePage:
         actions.append(clear_btn)
         box.append(actions)
 
-        # Sem rolagem vertical por fora: assim a imagem ocupa o espaço que sobra
-        # e cresce quando você aumenta a janela, em vez de ficar num tamanho fixo.
-        clamp = Adw.Clamp()
-        clamp.set_maximum_size(1400)
-        clamp.set_child(box)
-        self.page = page(f"Ler tela · {machine}", clamp)
+        # Rolagem vertical por fora: a página inteira rola, então os botões lá
+        # embaixo sempre dão pra alcançar, por mais texto que tenha no bloco.
+        self.page = page(f"Ler tela · {machine}", scrolled(box, max_width=1200))
         self.vm.changed.connect(self._refresh)
         self.vm.block_changed.connect(self._block_changed)
         if prefill is not None:
