@@ -595,3 +595,21 @@ fora (como em Wayland), então o comando cai no `gnome-screenshot`, que pisca a
 tela ao salvar e não tem como desligar isso. O `scrot` (e o `maim`, o `import`)
 tira o print sem piscar, e o comando já prefere eles. Quando só o
 `gnome-screenshot` existe e é usado, o comando avisa pra instalar o `scrot`.
+
+## Ler texto da tela, parte 2
+
+**D92. Botão "Ler o texto (OCR)" direto na imagem.**
+A tela de OCR era aberta por um ícone de câmera no topo da lista de comandos,
+fácil de não achar (o usuário rodava o comando `screenshot` e via só a imagem).
+Agora, quando um comando devolve uma imagem, aparece um botão "Ler o texto
+(OCR)" na própria imagem, que abre a tela de recorte já com a imagem carregada.
+O ícone no topo continua, pra começar do zero.
+
+**D93. O instalador atualiza sozinho os exemplos intactos.**
+O `install.sh` só criava exemplos que faltavam, então uma correção num exemplo
+que já existia (o screenshot) nunca chegava. Agora o Relay guarda um hash de
+cada exemplo que escreve (`.nome.py.sha`). Na instalação, um exemplo cujo
+conteúdo ainda bate com esse hash (você não editou) é atualizado sozinho quando
+a versão nova muda; um que você editou fica intacto (só troca com
+`--atualizar`, que faz backup). Instalações antigas não têm o hash, então o
+primeiro `--atualizar` é manual; depois disso é automático.

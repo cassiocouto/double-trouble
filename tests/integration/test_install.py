@@ -116,7 +116,7 @@ def test_install_fresh_agent_only(home):
     cfg_dir = home / ".config" / "relay"
     assert (cfg_dir / "relay.json").exists()
     assert oct(os.stat(cfg_dir / "relay.json").st_mode & 0o777) == "0o600"
-    assert {p.name for p in (cfg_dir / "comandos").iterdir()} == {
+    assert {p.name for p in (cfg_dir / "comandos").glob("*.py")} == {
         "status.py",
         "notificar.py",
         "travar_tela.py",

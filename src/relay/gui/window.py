@@ -99,10 +99,10 @@ class MainWindow(Adw.ApplicationWindow):
         vm.changed.connect(lambda: self.history_vm.reload() if vm.state in (RunVM.DONE, RunVM.FAILED) else None)
         self._push(RunPage(self, vm))
 
-    def show_capture(self, machine: str) -> None:
+    def show_capture(self, machine: str, prefill: bytes | None = None) -> None:
         from .pages import CapturePage
 
-        self._push(CapturePage(self, machine))
+        self._push(CapturePage(self, machine, prefill=prefill))
 
     def make_extractor(self):
         """Função que a tela de captura usa pra ler o recorte com a API do Claude.

@@ -271,6 +271,12 @@ class ImageView:
         spacer = Gtk.Box()
         spacer.set_hexpand(True)
         head.append(spacer)
+        self._on_read = None
+        self.read_btn = button("Ler o texto (OCR)", "flat")
+        self.read_btn.set_tooltip_text("Recortar um pedaço e extrair o texto com o Claude")
+        self.read_btn.connect("clicked", lambda *_: self._on_read and self._on_read(self.data))
+        self.read_btn.set_visible(False)
+        head.append(self.read_btn)
         self.zoom_btn = Gtk.ToggleButton(label="Tamanho real")
         self.zoom_btn.add_css_class("flat")
         self.zoom_btn.set_tooltip_text("Ver em 100% (rola pra ver tudo) ou caber na largura")
@@ -296,9 +302,10 @@ class ImageView:
         self.note = label("", "dim-label", "caption")
         self.container.append(self.note)
 
-    def show(self, data: bytes, is_image: bool, suggested_name: str = "arquivo") -> None:
+    def show(self, data: bytes, is_image: bool, suggested_name: str = "arquivo", on_read=None) -> None:
         self.data = data
         self.name = suggested_name
+        self._on_read = on_read
         shown_image = False
         if is_image:
             try:
@@ -308,6 +315,7 @@ class ImageView:
                 self.title.set_label("Imagem")
                 self.frame.set_visible(True)
                 self.zoom_btn.set_visible(True)
+                self.read_btn.set_visible(on_read is not None)
                 self._apply_zoom()
                 shown_image = True
             except GLib.Error:
@@ -315,6 +323,7 @@ class ImageView:
         if not shown_image:
             self.frame.set_visible(False)
             self.zoom_btn.set_visible(False)
+            self.read_btn.set_visible(False)
             self.title.set_label("Arquivo")
             self.note.set_label(f"{len(data) // 1024} KiB · use Salvar pra guardar")
 
