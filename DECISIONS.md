@@ -625,3 +625,22 @@ dica escrita por cima ("Arraste o mouse sobre o texto…") enquanto nada está
 selecionado. Os botões "1 · Tirar print" e "3 · Ler recorte" (sem um "2 ·", que
 era o arrasto) viraram só "Tirar print" e "Ler recorte", e o "Ler recorte" ficou
 logo abaixo da imagem, do lado de onde a seleção é feita.
+
+**D95. A imagem do recorte é um `Gtk.Picture`, e a seleção fica numa camada só
+de desenho.**
+Desenhar a imagem na mão no `DrawingArea` (com `Gdk.cairo_set_source_pixbuf`)
+não aparecia na tela: a caixa ficava preta e não dava pra recortar. Voltamos a
+mostrar a imagem com `Gtk.Picture` (o mesmo jeito que já funciona na tela do
+print) e pusemos por cima um `DrawingArea` transparente que só desenha o
+retângulo azul. Essa camada não pega clique (`can_target = False`), então o
+arrasto vai direto pro `Picture`; os dois usam a mesma coordenada. O cursor vira
+uma cruz em cima da imagem. Tem um botão "Tamanho real" pra ver em 100% e mirar
+num texto pequeno (a área rola). A seção da imagem só aparece depois que tem um
+print, pra tela começar limpa.
+
+**D96. Detalhe comprido de comando vai pra um (i), e a saída encolhe.**
+O texto longo de ajuda (ex.: a explicação de X11/Wayland do screenshot) enchia o
+topo da tela de rodar. Agora ele fica atrás de um botão (i) do lado do nome do
+comando. E a caixa de saída deixou de ter altura fixa de 260 px (uma saída de
+uma linha virava um retângulo preto enorme): cresce com o conteúdo até um teto e
+só então rola.
