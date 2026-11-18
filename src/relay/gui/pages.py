@@ -314,7 +314,8 @@ class RunPage:
 
     def _show_artifact(self, data: bytes, is_image: bool) -> None:
         self.image.container.set_visible(True)
-        self.image.show(data, is_image, suggested_name=self.vm.command["nome"])
+        on_read = (lambda img: self.win.show_capture(self.vm.machine, prefill=img)) if is_image else None
+        self.image.show(data, is_image, suggested_name=self.vm.command["nome"], on_read=on_read)
 
     def _copy(self, *_):
         copy_to_clipboard(self.page, self.vm.output_text())
@@ -463,7 +464,7 @@ class CapturePage:
     outro. O texto é extraído pela API do Claude (a chave fica nas Configurações).
     """
 
-    def __init__(self, win: MainWindow, machine: str):
+    def __init__(self, win: MainWindow, machine: str, prefill: bytes | None = None):
         self.win = win
         self.machine = machine
         self.vm = CaptureVM(win.service, win.make_extractor())
@@ -540,7 +541,15 @@ class CapturePage:
         self.page = page(f"Ler tela · {machine}", scrolled(box, max_width=1200))
         self.vm.changed.connect(self._refresh)
         self.vm.block_changed.connect(self._block_changed)
-        self.status.set_label("Clique em “1 · Tirar print” pra começar.")
+        if prefill is not None:
+            try:
+                self.crop.set_image(prefill)
+                self.extract_btn.set_sensitive(True)
+                self.status.set_label("Arraste o mouse sobre o texto na imagem e clique em “3 · Ler recorte”.")
+            except Exception:
+                self.status.set_label("Clique em “1 · Tirar print” pra começar.")
+        else:
+            self.status.set_label("Clique em “1 · Tirar print” pra começar.")
         self._refresh()
 
     def _mode(self) -> str:

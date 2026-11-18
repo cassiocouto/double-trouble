@@ -86,23 +86,52 @@ def write_backup(source, target) -> None:
     write_private(target, source.read_bytes(), mode=0o600)
 
 
-def install_examples(force: bool = False) -> list[str]:
+def _sha(text: str) -> str:
+    import hashlib
+
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def install_examples(force: bool = False) -> tuple[list[str], list[str]]:
+    """Copia os exemplos. Devolve (criados, atualizados).
+
+    Um exemplo que você ainda não editou (o conteúdo bate com o hash que o Relay
+    guardou da última vez) é atualizado sozinho quando a versão nova muda. Um que
+    você editou fica intacto, a não ser com --atualizar (que faz backup).
+    """
     folder = paths.commands_dir()
     paths.ensure_private_dir(folder)
-    created = []
+    created, updated = [], []
     pkg = resources.files("relay") / "data" / "exemplos"
     for item in sorted(pkg.iterdir(), key=lambda p: p.name):
         if not item.name.endswith(".py"):
             continue
         target = folder / item.name
-        if target.exists() and not force:
+        sha_file = folder / f".{item.name}.sha"
+        new_text = item.read_text(encoding="utf-8")
+        new_sha = _sha(new_text)
+
+        def record(name=item.name, sha=new_sha, text=new_text, t=target, sf=sha_file):
+            write_private(t, text, mode=0o600)
+            write_private(sf, sha + "\n", mode=0o600)
+
+        if not target.exists():
+            record()
+            created.append(item.name[:-3])
             continue
-        if target.exists():
-            backup = target.with_name(f"{item.name}.bak-{time.strftime('%Y%m%d-%H%M%S')}")
-            write_backup(target, backup)
-        write_private(target, item.read_text(encoding="utf-8"), mode=0o600)
-        created.append(item.name[:-3])
-    return created
+        current = target.read_text(encoding="utf-8")
+        if _sha(current) == new_sha:
+            if not sha_file.exists():  # já estava igual, só registra o hash
+                write_private(sha_file, new_sha + "\n", mode=0o600)
+            continue
+        recorded = sha_file.read_text(encoding="utf-8").strip() if sha_file.exists() else None
+        pristine = recorded == _sha(current)  # você não mexeu desde a última instalação
+        if force or pristine:
+            if not pristine:  # você editou e pediu --atualizar: guarda o seu
+                write_backup(target, target.with_name(f"{item.name}.bak-{time.strftime('%Y%m%d-%H%M%S')}"))
+            record()
+            updated.append(item.name[:-3])
+    return created, updated
 
 
 def cmd_init(a) -> None:
@@ -122,7 +151,7 @@ def cmd_init(a) -> None:
     cfg.agent.pairing_port = a.porta + 1
     config_mod.Config.from_json(cfg.to_json())  # valida o que veio da linha de comando
     config_mod.save(cfg, path)
-    created = [] if a.sem_exemplos else install_examples()
+    created, _ = ([], []) if a.sem_exemplos else install_examples()
     say(f"pronto, config em {path}")
     say(f"  esta máquina  {cfg.name}, escutando em {cfg.agent.listen}:{cfg.agent.port}")
     if created:
@@ -582,11 +611,13 @@ def cmd_exemplos(a) -> None:
         f"Trocar os exemplos em {paths.commands_dir()} pelas versões novas? (os atuais viram .bak)", a.sim
     ):
         raise Exit(1, "nada foi mudado")
-    created = install_examples(force=a.atualizar)
+    created, updated = install_examples(force=a.atualizar)
     if created:
-        say(f"exemplos escritos em {paths.commands_dir()}: {', '.join(created)}")
-    else:
-        say("os exemplos já existem. Use --atualizar pra trocar pelas versões novas")
+        say(f"exemplos criados: {', '.join(created)}")
+    if updated:
+        say(f"exemplos atualizados: {', '.join(updated)}")
+    if not created and not updated:
+        say("os exemplos já estão em dia. Um que você editou só é trocado com --atualizar")
 
 
 def build_parser() -> argparse.ArgumentParser:
