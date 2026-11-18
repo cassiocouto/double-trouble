@@ -56,9 +56,13 @@ def test_question_mode_uses_the_question():
     assert cap["body"]["messages"][0]["content"][1]["text"] == "Qual o total?"
 
 
-def test_question_mode_needs_a_question():
-    with pytest.raises(RelayError, match="digite a pergunta"):
-        vision.extract_text(PNG, mode="pergunta", question="  ", settings=settings(), transport=fake_transport())
+def test_question_mode_without_question_uses_default_prompt():
+    cap = {}
+    for q in (None, "", "   "):
+        vision.extract_text(
+            PNG, mode="pergunta", question=q, settings=settings(), transport=fake_transport(capture=cap)
+        )
+        assert cap["body"]["messages"][0]["content"][1]["text"] == vision.DEFAULT_ASK_PROMPT
 
 
 def test_joins_multiple_text_blocks():
