@@ -3,8 +3,10 @@
 Não mostra notificação, não pisca a tela e não usa atalho de teclado.
 
 Importante: o jeito que funciona depende da sessão gráfica.
-  * X11: ferramentas como scrot, maim, gnome-screenshot e ImageMagick tiram o
-    print direto, em silêncio. Basta ter uma delas instalada.
+  * X11: scrot, maim e ImageMagick tiram o print em silêncio, sem piscar a
+    tela. O gnome-screenshot também funciona, mas pisca a tela ao salvar; se
+    for o único instalado, o comando avisa pra instalar o scrot. Instale um:
+    sudo apt install scrot
   * Wayland (GNOME): por segurança, o sistema bloqueia print silencioso de
     programas de fora (a API do shell responde "Screenshot is not allowed").
     Não há caminho sem algum aviso. Pra print silencioso, use a sessão "Ubuntu
@@ -87,6 +89,9 @@ WAYLAND_METHODS = [
 METHODS = WAYLAND_METHODS if wayland else [("gnome-shell", gnome_shell()), *X11_METHODS]
 
 
+FLASHES = {"gnome-screenshot"}  # pisca a tela ao salvar; scrot/maim/import não piscam
+
+
 def png_size(path: Path) -> str:
     """Largura x altura lendo o cabeçalho do PNG (IHDR), só com a stdlib."""
     try:
@@ -119,6 +124,8 @@ for name, cmd in METHODS:
     if r.returncode == 0 and worked():
         os.replace(shot, out_file)
         print(f"print tirado com {name} ({png_size(Path(out_file))})")
+        if name in FLASHES:
+            print(f"obs: o {name} pisca a tela. Pra não piscar: sudo apt install scrot", file=sys.stderr)
         sys.exit(0)
     detail = (r.stderr or r.stdout or "sem detalhe").strip().splitlines()
     errors.append(f"{name}: {detail[-1] if detail else 'falhou'}")
