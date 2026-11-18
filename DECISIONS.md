@@ -702,3 +702,19 @@ De quebra, o retângulo e o rótulo de tamanho saíram do `Gtk.Fixed` e viraram
 filhos diretos do `Gtk.Overlay`, posicionados por margem. É o jeito mais comum e
 evita o `Gtk.Fixed`, que tem alocação de tamanho esquisita. Não era a causa do
 segfault (o código com `Fixed` roda liso no teste), é só pra simplificar.
+
+**D104. A causa real do segfault: a textura do recorte vinha de
+`new_for_pixbuf`.**
+Um `gdb` na máquina da Cass (GTK mais novo que o daqui, Python 3.14) mostrou a
+pilha de verdade: o tombo é no `gsk_renderer_render` →
+`gdk_texture_downloader_download_into`, ou seja, na hora de desenhar a imagem a
+textura é lida fora da memória. A tela do recorte montava a textura com
+`Gdk.Texture.new_for_pixbuf`, que embrulha a memória do pixbuf (com rowstride
+"folgado"); no GTK novo da Cass isso vira uma leitura fora do limite. A tela do
+print (`ImageView`), que monta a textura com `new_from_bytes` (decodifica o PNG
+direto), sempre funcionou lá. Agora o recorte usa `new_from_bytes` também (e
+guarda o pixbuf só pra recortar). Isso explica por que caía nos dois
+renderizadores (GL e cairo): a textura é que estava ruim, não o renderizador.
+As tentativas de desligar GL por `GDK_DEBUG` (D102) foram tiro no escuro — o GTK
+novo da Cass nem reconhece esses flags —, então saíram; ficou só o
+`GSK_RENDERER=cairo` e o `GTK_MEDIA=none`, por garantia.
