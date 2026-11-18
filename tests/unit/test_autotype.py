@@ -57,9 +57,11 @@ def test_roundtrip_with_real_openssl():
     senha = "senha-de-teste-42"
     texto = "linha 1\nlinha 2 com acento ção\nlinha 3"
     cifrado = autotype.encrypt(texto, senha)
-    # decifra como o tttttt faria, com a mesma senha
+    assert "\n" not in cifrado  # base64 numa linha só (-A), como o tttttt quer
+    # decifra com a receita exata do tttttt (600000 voltas, sha256, base64)
+    recipe = ["openssl", "enc", "-d", "-aes-256-cbc", "-pbkdf2", "-iter", "600000", "-md", "sha256", "-a", "-A"]
     r = subprocess.run(
-        ["openssl", "enc", "-d", "-aes-256-cbc", "-pbkdf2", "-base64", "-pass", f"pass:{senha}"],
+        [*recipe, "-pass", f"pass:{senha}"],
         input=cifrado.encode(),
         capture_output=True,
         check=False,

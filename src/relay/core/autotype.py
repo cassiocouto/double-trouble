@@ -1,10 +1,12 @@
 """Cifra o bloco pro programa 'tttttt' (o autotyper que só aceita texto cifrado).
 
 O 'tttttt' roda no executor e só digita texto cifrado. A gente cifra aqui, no
-controlador, com a senha compartilhada, chamando o openssl do sistema
-(AES-256-CBC + PBKDF2). O 'tttttt' do outro lado abre com a MESMA senha:
+controlador, com a senha compartilhada, chamando o openssl do sistema. O
+'tttttt' exige esta receita exata (AES-256-CBC, PBKDF2 com 600000 voltas e
+sha256, base64 numa linha só), senão recusa. O outro lado abre com a MESMA
+senha:
 
-    openssl enc -d -aes-256-cbc -pbkdf2 -base64 -pass pass:SENHA
+    openssl enc -d -aes-256-cbc -pbkdf2 -iter 600000 -md sha256 -a -A -pass pass:SENHA
 
 Em tempo de execução, só a biblioteca padrão e o openssl do sistema (como o
 scrot do screenshot). A senha fica só nesta máquina, num arquivo modo 600, e vai
@@ -27,7 +29,12 @@ from .safety import read_private_text, write_private
 from .strictjson import loads_strict
 
 PASS_ENV = "RELAY_TTTTTT_PASS"  # noqa: S105 (nome da variável de ambiente, não a senha)
-OPENSSL_ENCRYPT = ["openssl", "enc", "-aes-256-cbc", "-pbkdf2", "-base64", "-pass", f"env:{PASS_ENV}"]
+# Receita exigida pelo tttttt: 600000 voltas de PBKDF2 com sha256, base64 numa
+# linha só (-a -A). A senha vem de env:, nunca de argumento.
+OPENSSL_ENCRYPT = [
+    "openssl", "enc", "-aes-256-cbc", "-pbkdf2", "-iter", "600000", "-md", "sha256",
+    "-salt", "-a", "-A", "-pass", f"env:{PASS_ENV}",
+]  # fmt: skip
 TIMEOUT = 30
 
 
