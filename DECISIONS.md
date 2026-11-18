@@ -655,3 +655,22 @@ de seleção, o rótulo com o tamanho em pixels e a dica são widgets normais
 pequeno pra borda e o fundo. O arrasto mostra o retângulo na hora, com a borda
 azul e o tamanho, pra ter feedback de verdade enquanto seleciona. Só precisa da
 biblioteca padrão e do PyGObject, como manda o `CLAUDE.md`.
+
+**D98. Renderizador de software por padrão (`GSK_RENDERER=cairo`).**
+O `relay-gui` dava segfault (piscava a tela e caía) ao redimensionar a janela ou
+ao clicar depois de mostrar um print grande. É o renderizador GL do GTK 4, que
+quebra em várias placas e drivers (a G6 e a G15 são híbridas). O `app.py` agora
+define `GSK_RENDERER=cairo` (software, estável, usa a libcairo do sistema) com
+`setdefault`, então quem quiser GL ainda consegue pela variável de ambiente.
+
+**D99. A janela lembra o tamanho, e a tela de OCR cresce junto.**
+A janela abria pequena (820x720) e a imagem do recorte ficava num tamanho fixo
+mesmo esticando a janela. Agora o padrão é 1040x860, o tamanho é salvo em
+`janela.json` ao fechar e restaurado ao abrir, e a tela "Ler tela" deixou de ter
+rolagem vertical por fora: a imagem é `vexpand` e ocupa o espaço que sobra,
+crescendo com a janela sem distorcer (continua `CONTAIN`).
+
+**D100. Escolha do modo de OCR vira radio em vez de dropdown.**
+"Ler o texto" e "Perguntar ao Claude" eram um `Adw.ComboRow` (dropdown). Viraram
+dois `Gtk.CheckButton` agrupados (radio), que mostram as duas opções de uma vez.
+O campo da pergunta só aparece no modo "Perguntar".

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import sys
 
 
@@ -15,6 +16,11 @@ def _missing_gtk_message(exc: BaseException) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # Renderizador de software por padrão. O renderizador GL do GTK 4 trava
+    # (pisca a tela e dá segfault) em várias placas/drivers, ainda mais com uma
+    # imagem grande na tela. O de software é estável e usa a libcairo do sistema
+    # (não precisa do python3-gi-cairo). Quem quiser GL define GSK_RENDERER.
+    os.environ.setdefault("GSK_RENDERER", "cairo")
     try:
         import gi
 

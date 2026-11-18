@@ -490,19 +490,25 @@ class CapturePage:
         box = vbox()
         box.append(label(f"Tira um print de {machine}, recorta um pedaço e extrai o texto.", "dim-label"))
 
-        group = Adw.PreferencesGroup()
-        self.mode = Adw.ComboRow()
-        self.mode.set_use_markup(False)
-        self.mode.set_title("O que fazer com o recorte")
-        self.mode.set_model(Gtk.StringList.new(["Ler o texto", "Perguntar ao Claude"]))
-        self.mode.connect("notify::selected", lambda *_: self._mode_changed())
+        box.append(label("O que fazer com o recorte", "heading"))
+        mode_box = Gtk.Box(spacing=18)
+        self.mode_ocr = Gtk.CheckButton(label="Ler o texto")
+        self.mode_ask = Gtk.CheckButton(label="Perguntar ao Claude")
+        self.mode_ask.set_group(self.mode_ocr)
+        self.mode_ocr.set_active(True)
+        self.mode_ocr.connect("toggled", lambda *_: self._mode_changed())
+        self.mode_ask.connect("toggled", lambda *_: self._mode_changed())
+        mode_box.append(self.mode_ocr)
+        mode_box.append(self.mode_ask)
+        box.append(mode_box)
+
+        self.qgroup = Adw.PreferencesGroup()
         self.question = Adw.EntryRow()
         self.question.set_use_markup(False)
         self.question.set_title("Pergunta sobre o recorte")
-        self.question.set_visible(False)
-        group.add(self.mode)
-        group.add(self.question)
-        box.append(group)
+        self.qgroup.add(self.question)
+        self.qgroup.set_visible(False)
+        box.append(self.qgroup)
 
         top = Gtk.Box(spacing=12)
         top.set_halign(Gtk.Align.CENTER)
@@ -528,6 +534,7 @@ class CapturePage:
         box.append(img_head)
 
         self.crop = CropView()
+        self.crop.widget.set_vexpand(True)  # cresce com a janela (sem distorcer)
         box.append(self.crop.widget)
 
         # O botão de ler o recorte fica logo abaixo da imagem, onde a seleção é
@@ -571,7 +578,12 @@ class CapturePage:
         actions.append(clear_btn)
         box.append(actions)
 
-        self.page = page(f"Ler tela · {machine}", scrolled(box, max_width=1200))
+        # Sem rolagem vertical por fora: assim a imagem ocupa o espaço que sobra
+        # e cresce quando você aumenta a janela, em vez de ficar num tamanho fixo.
+        clamp = Adw.Clamp()
+        clamp.set_maximum_size(1400)
+        clamp.set_child(box)
+        self.page = page(f"Ler tela · {machine}", clamp)
         self.vm.changed.connect(self._refresh)
         self.vm.block_changed.connect(self._block_changed)
         if prefill is not None:
@@ -591,11 +603,11 @@ class CapturePage:
             w.set_visible(True)
 
     def _mode(self) -> str:
-        return "pergunta" if self.mode.get_selected() == 1 else "ocr"
+        return "pergunta" if self.mode_ask.get_active() else "ocr"
 
     def _mode_changed(self) -> None:
         pergunta = self._mode() == "pergunta"
-        self.question.set_visible(pergunta)
+        self.qgroup.set_visible(pergunta)
         self.extract_btn.set_label("Perguntar" if pergunta else "Ler recorte")
 
     def _take_shot(self) -> None:

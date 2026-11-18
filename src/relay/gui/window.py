@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import contextlib
+import json
+
 import gi
 
 gi.require_version("Gtk", "4.0")
@@ -10,7 +13,10 @@ from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
 
 from .. import APP_ID  # noqa: E402
 from ..core import config as config_mod  # noqa: E402
+from ..core import paths  # noqa: E402
 from .history import Entry, HistoryStore  # noqa: E402
+
+DEFAULT_SIZE = (1040, 860)
 from .pages import CommandsPage, HistoryEntryPage, HistoryPage, MachinesPage, RunPage  # noqa: E402
 from .services import ControllerService  # noqa: E402
 from .viewmodels import (  # noqa: E402
@@ -42,7 +48,8 @@ class MainWindow(Adw.ApplicationWindow):
         super().__init__(application=app)
         self.app = app
         self.set_title("Relay")
-        self.set_default_size(820, 720)
+        w, h = self._load_size()
+        self.set_default_size(w, h)
         self.set_icon_name(APP_ID)
 
         self.service = ControllerService(glib_dispatch, load_config=config_mod.load)
@@ -65,6 +72,25 @@ class MainWindow(Adw.ApplicationWindow):
         self.machines.refresh()
         self._timer = GLib.timeout_add_seconds(REFRESH_SECONDS, self._auto_refresh)
         self.connect("close-request", self._on_close)
+
+    # -- tamanho da janela --------------------------------------------------
+    def _size_file(self):
+        return paths.base_dir() / "janela.json"
+
+    def _load_size(self) -> tuple[int, int]:
+        try:
+            data = json.loads(self._size_file().read_text())
+            return max(640, int(data["largura"])), max(560, int(data["altura"]))
+        except Exception:
+            return DEFAULT_SIZE
+
+    def _save_size(self) -> None:
+        with contextlib.suppress(Exception):
+            w, h = self.get_width(), self.get_height()
+            if w < 200 or h < 200:  # minimizada ou ainda sem alocação
+                return
+            paths.ensure_private_dir(paths.base_dir())
+            self._size_file().write_text(json.dumps({"largura": w, "altura": h}))
 
     # -- navegação ----------------------------------------------------------
     def app_menu(self) -> Gio.Menu:
@@ -192,6 +218,7 @@ class MainWindow(Adw.ApplicationWindow):
         return True
 
     def _on_close(self, *_args) -> bool:
+        self._save_size()
         if self._timer:
             GLib.source_remove(self._timer)
             self._timer = 0

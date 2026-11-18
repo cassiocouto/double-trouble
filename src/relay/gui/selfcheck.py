@@ -125,7 +125,9 @@ def run_checks(win) -> list[tuple[str, str | None]]:
         page.crop.set_image(SAMPLE_PNG)
         page.crop._start, page.crop._cur = (1.0, 1.0), (40.0, 30.0)
         page.crop.crop_png()  # recorte (ou imagem inteira, se pequeno demais)
-        page.mode.set_selected(1)
+        page.crop.set_full_size(True)  # exercita o modo 100%
+        page.crop.set_full_size(False)
+        page.mode_ask.set_active(True)
         page._mode_changed()
         page.vm._append("texto de exemplo <com> & símbolos")
         page.vm._append("segundo recorte")
