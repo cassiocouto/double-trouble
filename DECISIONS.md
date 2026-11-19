@@ -788,3 +788,9 @@ Quatro coisas na tela "Ler tela":
 - Toda autodigitação mostra uma estimativa de tempo (espera + caracteres pela
   velocidade). A velocidade (caracteres por segundo do `tttttt`) é um ajuste nas
   Configurações, junto da senha, em `AutotypeSettings` (`tttttt.json`).
+
+**D111. A resposta do Claude segue o idioma do conteúdo.**
+Antes os prompts forçavam "responda em português do Brasil". Agora um pedido
+`SAME_LANGUAGE` entra em todas as perguntas (imagem e bloco de texto): responde
+no idioma do que veio (inglês pra inglês, português pra português). O OCR não
+muda, que é o texto literal da tela.
