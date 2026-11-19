@@ -28,7 +28,8 @@ PARAMETROS = [
     {
         "nome": "texto",
         "tipo": "texto",
-        "rotulo": "Texto cifrado pra digitar",
+        "rotulo": "Texto pra digitar",
+        "ajuda": "A interface cifra antes de mandar. Pela linha de comando, mande já cifrado.",
         "obrigatorio": True,
         "multilinha": True,
     },

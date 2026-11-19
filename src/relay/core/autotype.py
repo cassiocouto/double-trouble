@@ -21,6 +21,7 @@ import os
 import shutil
 import subprocess
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 
 from . import paths
@@ -36,29 +37,45 @@ OPENSSL_ENCRYPT = [
     "-salt", "-a", "-A", "-pass", f"env:{PASS_ENV}",
 ]  # fmt: skip
 TIMEOUT = 30
+DEFAULT_CPS = 12  # caracteres por segundo que o tttttt digita (dá pra ajustar nas Configurações)
 
 
-def password_path() -> Path:
+@dataclass
+class AutotypeSettings:
+    senha: str = ""
+    cps: int = DEFAULT_CPS
+
+
+def settings_path() -> Path:
     return paths.base_dir() / "tttttt.json"
 
 
-def load_password(path: Path | None = None) -> str:
-    path = path or password_path()
+def load_settings(path: Path | None = None) -> AutotypeSettings:
+    path = path or settings_path()
     if not path.exists():
-        return ""
-    data = loads_strict(read_private_text(path, "a senha do tttttt"))
+        return AutotypeSettings()
+    data = loads_strict(read_private_text(path, "o config do tttttt"))
     if not isinstance(data, dict):
         raise ConfigError("o config do tttttt precisa ser um objeto JSON")
     senha = data.get("senha", "")
     if not isinstance(senha, str):
         raise ConfigError("a senha do tttttt precisa ser texto")
-    return senha
+    cps = data.get("cps", DEFAULT_CPS)
+    if not isinstance(cps, int) or isinstance(cps, bool) or cps < 1:
+        cps = DEFAULT_CPS
+    return AutotypeSettings(senha=senha, cps=cps)
 
 
-def save_password(senha: str, path: Path | None = None) -> None:
-    path = path or password_path()
+def save_settings(s: AutotypeSettings, path: Path | None = None) -> None:
+    path = path or settings_path()
     paths.ensure_private_dir(path.parent)
-    write_private(path, json.dumps({"senha": senha}) + "\n", mode=0o600)
+    write_private(path, json.dumps({"senha": s.senha, "cps": s.cps}) + "\n", mode=0o600)
+
+
+def estimate_seconds(n_chars: int, atraso: int = 0, cps: int = DEFAULT_CPS) -> int:
+    """Quanto o tttttt deve levar pra digitar: a espera mais os caracteres pela velocidade."""
+    cps = cps if cps and cps > 0 else DEFAULT_CPS
+    return int(atraso) + round(max(0, n_chars) / cps)
 
 
 # Transporte injetável: (argv, stdin, env) -> (código, stdout, stderr). Nos

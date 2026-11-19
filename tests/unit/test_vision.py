@@ -164,3 +164,23 @@ def test_bad_max_tokens_falls_back(tmp_path):
     path.write_text(json.dumps({"api_key": "sk", "max_tokens": 999999}))
     os.chmod(path, 0o600)
     assert vision.load_settings(path).max_tokens == vision.DEFAULT_MAX_TOKENS
+
+
+def test_ask_text_sends_text_only_with_the_block():
+    cap = {}
+    vision.ask_text("qual o total?\n12 + 30", settings=settings(), transport=fake_transport(capture=cap))
+    content = cap["body"]["messages"][0]["content"]
+    assert len(content) == 1 and content[0]["type"] == "text"  # sem bloco de imagem
+    assert "qual o total?" in content[0]["text"]
+    assert vision.NO_MARKDOWN in content[0]["text"]
+
+
+def test_ask_text_empty_block_raises():
+    with pytest.raises(RelayError, match="vazio"):
+        vision.ask_text("   ", settings=settings(), transport=fake_transport())
+
+
+def test_ask_text_answer_without_markdown():
+    body = {"content": [{"type": "text", "text": "o total e **42**"}]}
+    out = vision.ask_text("x", settings=settings(), transport=fake_transport(reply_body=body))
+    assert out == "o total e 42"

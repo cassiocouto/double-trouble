@@ -595,6 +595,24 @@ def test_capture_accumulates_and_releases(ctx):
     assert vm.block == "" and vm.snippets == 0 and not vm.has_text
 
 
+def test_capture_append_text_does_not_count_as_snippet(ctx):
+    from relay.gui.viewmodels import CaptureVM
+
+    _, _loop, service, _ = ctx
+    vm = CaptureVM(service, lambda img, mode, q: "x")
+    blocks = []
+    vm.block_changed.connect(blocks.append)
+
+    vm._append("recorte")
+    assert vm.snippets == 1
+    vm.append_text("resposta do claude")  # junta a resposta, mas não é recorte
+    assert vm.block == "recorte\n\nresposta do claude"
+    assert vm.snippets == 1
+    assert blocks[-1] == vm.block
+    vm.append_text("   ")  # vazio não muda nada
+    assert vm.block == "recorte\n\nresposta do claude"
+
+
 def test_capture_question_mode_passes_question(ctx):
     from relay.gui.viewmodels import CaptureVM
 

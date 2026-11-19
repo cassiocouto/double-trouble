@@ -11,15 +11,33 @@ from relay.core import autotype
 from relay.core.errors import RelayError
 
 
-def test_save_and_load_password(tmp_path):
+def test_save_and_load_settings(tmp_path):
     p = tmp_path / "tttttt.json"
-    autotype.save_password("segredo 123", path=p)
-    assert autotype.load_password(path=p) == "segredo 123"
+    autotype.save_settings(autotype.AutotypeSettings(senha="segredo 123", cps=30), path=p)
+    loaded = autotype.load_settings(path=p)
+    assert loaded.senha == "segredo 123"
+    assert loaded.cps == 30
     assert oct(p.stat().st_mode & 0o777) == "0o600"
 
 
-def test_load_password_absent_is_empty(tmp_path):
-    assert autotype.load_password(path=tmp_path / "nao-existe.json") == ""
+def test_load_settings_absent_is_default(tmp_path):
+    s = autotype.load_settings(path=tmp_path / "nao-existe.json")
+    assert s.senha == ""
+    assert s.cps == autotype.DEFAULT_CPS
+
+
+def test_bad_cps_falls_back_to_default(tmp_path):
+    p = tmp_path / "tttttt.json"
+    p.write_text('{"senha": "x", "cps": 0}')
+    p.chmod(0o600)
+    assert autotype.load_settings(path=p).cps == autotype.DEFAULT_CPS
+
+
+def test_estimate_seconds():
+    # 120 caracteres a 12/s = 10s, mais 3s de espera = 13s
+    assert autotype.estimate_seconds(120, atraso=3, cps=12) == 13
+    assert autotype.estimate_seconds(0, atraso=5, cps=12) == 5
+    assert autotype.estimate_seconds(100, atraso=0, cps=0) == round(100 / autotype.DEFAULT_CPS)
 
 
 def test_encrypt_needs_a_password():
