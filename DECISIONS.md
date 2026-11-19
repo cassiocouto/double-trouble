@@ -794,3 +794,13 @@ Antes os prompts forçavam "responda em português do Brasil". Agora um pedido
 `SAME_LANGUAGE` entra em todas as perguntas (imagem e bloco de texto): responde
 no idioma do que veio (inglês pra inglês, português pra português). O OCR não
 muda, que é o texto literal da tela.
+
+**D112. O comando acha o programa fora do PATH curto do serviço.**
+O `autodigitar` dizia que o `tttttt` não estava instalado, mas estava: o agente
+roda como serviço do systemd do usuário, cujo PATH é curto e geralmente não tem
+`~/.local/bin`, onde o `tttttt` fica. Agora o `relay.command.which()` procura no
+PATH, nas pastas de binário do usuário (`~/.local/bin`, `~/bin`, `~/.cargo/bin`,
+`/usr/local/bin`) e, por último, pergunta pro shell de login do usuário (que tem
+o PATH completo). Só nomes simples vão pro shell, pra não ter injeção. O
+`autodigitar` roda o `tttttt` pelo caminho cheio e ainda passa esse PATH
+completo pra ele, caso precise de outros programas.

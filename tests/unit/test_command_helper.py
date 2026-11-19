@@ -82,3 +82,22 @@ def test_session_env_is_off_in_tests():
     from relay.agent.session_env import session_env
 
     assert session_env() == {}
+
+
+def test_which_finds_program_in_user_local_bin(tmp_path, monkeypatch):
+    # o serviço do systemd tem PATH curto; which() tem que achar em ~/.local/bin
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("PATH", "")
+    local = tmp_path / ".local" / "bin"
+    local.mkdir(parents=True)
+    prog = local / "tttttt"
+    prog.write_text("#!/bin/sh\n")
+    os.chmod(prog, 0o700)
+    assert command.which("tttttt") == str(prog)
+
+
+def test_which_rejects_unsafe_names_without_shell(tmp_path, monkeypatch):
+    # nome com caracteres estranhos não vai pro shell de login (sem injeção)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("PATH", "")
+    assert command.which("tt; rm -rf x") is None
