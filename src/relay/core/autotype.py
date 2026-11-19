@@ -72,10 +72,22 @@ def save_settings(s: AutotypeSettings, path: Path | None = None) -> None:
     write_private(path, json.dumps({"senha": s.senha, "cps": s.cps}) + "\n", mode=0o600)
 
 
+# Igual ao TIMEOUT do comando autodigitar: serve pra avisar quando a estimativa
+# chega perto do limite.
+COMMAND_TIMEOUT = 900
+
+
 def estimate_seconds(n_chars: int, atraso: int = 0, cps: int = DEFAULT_CPS) -> int:
     """Quanto o tttttt deve levar pra digitar: a espera mais os caracteres pela velocidade."""
     cps = cps if cps and cps > 0 else DEFAULT_CPS
     return int(atraso) + round(max(0, n_chars) / cps)
+
+
+def format_eta(seconds: int) -> str:
+    if seconds < 90:
+        return f"~{seconds}s"
+    m, s = divmod(int(seconds), 60)
+    return f"~{m}min{s:02d}s"
 
 
 # Transporte injetável: (argv, stdin, env) -> (código, stdout, stderr). Nos

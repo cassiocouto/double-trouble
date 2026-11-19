@@ -21,7 +21,9 @@ from relay.command import params, user_path, which
 
 ICONE = "input-keyboard-symbolic"
 CATEGORIA = "Teclado"
-TIMEOUT = 180
+# Digitar um bloco grande leva tempo (o tttttt digita tecla por tecla). 15 min
+# cobre blocos bem grandes; se passar disso, mande um bloco menor.
+TIMEOUT = 900
 PROGRAMA = "tttttt"
 
 PARAMETROS = [
