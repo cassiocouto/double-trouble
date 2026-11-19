@@ -40,6 +40,12 @@ def test_estimate_seconds():
     assert autotype.estimate_seconds(100, atraso=0, cps=0) == round(100 / autotype.DEFAULT_CPS)
 
 
+def test_format_eta():
+    assert autotype.format_eta(45) == "~45s"
+    assert autotype.format_eta(90) == "~1min30s"
+    assert autotype.format_eta(174) == "~2min54s"
+
+
 def test_encrypt_needs_a_password():
     with pytest.raises(RelayError, match="senha"):
         autotype.encrypt("oi", "")

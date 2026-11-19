@@ -804,3 +804,10 @@ PATH, nas pastas de binário do usuário (`~/.local/bin`, `~/bin`, `~/.cargo/bin
 o PATH completo). Só nomes simples vão pro shell, pra não ter injeção. O
 `autodigitar` roda o `tttttt` pelo caminho cheio e ainda passa esse PATH
 completo pra ele, caso precise de outros programas.
+
+**D113. Mais tempo pro autodigitar, e estimativa legível.**
+Digitar um bloco grande é lento (o `tttttt` digita tecla por tecla, uns 10/s), e
+o limite de 3 min do comando estourava no meio. Subimos o `TIMEOUT` do
+`autodigitar` pra 900 s (15 min), bem abaixo do teto do agente (1 h). A
+estimativa no toast virou legível (`~2min54s` em vez de `~174s`) e, se a conta
+passar perto do limite, avisa pra mandar um bloco menor.

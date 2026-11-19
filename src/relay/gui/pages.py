@@ -364,7 +364,8 @@ class RunPage:
         except (TypeError, ValueError):
             atraso = 3
         eta = autotype.estimate_seconds(len(str(texto)), atraso=atraso, cps=cfg.cps)
-        self.win.toast(f"vai digitar em uns ~{eta}s")
+        aviso = " (pode estourar o tempo, mande um bloco menor)" if eta > autotype.COMMAND_TIMEOUT - 30 else ""
+        self.win.toast(f"vai digitar em uns {autotype.format_eta(eta)}{aviso}")
         return {**values, "texto": cifrado}
 
     def _copy(self, *_):
@@ -778,7 +779,8 @@ class CapturePage:
             self.win.toast(f"o bloco é grande demais (cifrado passa de {MAX_MULTILINE})")
             return
         eta = autotype.estimate_seconds(len(bloco), atraso=3, cps=cfg.cps)
-        self.win.toast(f"mandando pra {self.machine} digitar (uns ~{eta}s)…")
+        aviso = " (pode estourar o tempo, mande um bloco menor)" if eta > autotype.COMMAND_TIMEOUT - 30 else ""
+        self.win.toast(f"mandando pra {self.machine} digitar, uns {autotype.format_eta(eta)}{aviso}")
 
         def done(outcome) -> None:
             r = outcome.result or {}
