@@ -72,9 +72,9 @@ def save_settings(s: AutotypeSettings, path: Path | None = None) -> None:
     write_private(path, json.dumps({"senha": s.senha, "cps": s.cps}) + "\n", mode=0o600)
 
 
-# Igual ao TIMEOUT do comando autodigitar: serve pra avisar quando a estimativa
-# chega perto do limite.
-COMMAND_TIMEOUT = 900
+# Igual ao TIMEOUT do comando autodigitar (o teto do agente): serve pra avisar se
+# a estimativa chega perto, o que só acontece com bloco enorme e velocidade baixa.
+COMMAND_TIMEOUT = 3600
 
 
 def estimate_seconds(n_chars: int, atraso: int = 0, cps: int = DEFAULT_CPS) -> int:
