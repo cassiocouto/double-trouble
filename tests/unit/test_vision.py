@@ -56,6 +56,8 @@ def test_question_mode_uses_the_question():
     sent = cap["body"]["messages"][0]["content"][1]["text"]
     assert sent.startswith("Qual o total?")
     assert vision.NO_MARKDOWN in sent  # sempre pede resposta sem markdown
+    assert vision.SAME_LANGUAGE in sent  # resposta segue o idioma, não força português
+    assert "português do Brasil" not in sent
 
 
 def test_question_mode_without_question_uses_default_prompt():
@@ -67,6 +69,7 @@ def test_question_mode_without_question_uses_default_prompt():
         sent = cap["body"]["messages"][0]["content"][1]["text"]
         assert sent.startswith(vision.DEFAULT_ASK_PROMPT)
         assert vision.NO_MARKDOWN in sent
+        assert vision.SAME_LANGUAGE in sent
 
 
 def test_strip_markdown_removes_markers():
@@ -173,6 +176,7 @@ def test_ask_text_sends_text_only_with_the_block():
     assert len(content) == 1 and content[0]["type"] == "text"  # sem bloco de imagem
     assert "qual o total?" in content[0]["text"]
     assert vision.NO_MARKDOWN in content[0]["text"]
+    assert vision.SAME_LANGUAGE in content[0]["text"]
 
 
 def test_ask_text_empty_block_raises():

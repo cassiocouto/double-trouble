@@ -42,14 +42,20 @@ DEFAULT_ASK_PROMPT = (
     "Olhe este recorte da tela e me ajude da melhor forma possível. Se houver "
     "uma pergunta ou um exercício, responda. Se houver código, explique o que "
     "ele faz, mostre os problemas ou complete o que falta. Senão, diga o que é "
-    "importante aqui e o que fazer a seguir. Responda em português do Brasil."
+    "importante aqui e o que fazer a seguir."
 )
 
 # Mandar o bloco inteiro (só texto, sem imagem) pro Claude.
 DEFAULT_ASK_TEXT_PROMPT = (
     "Abaixo vai um texto que eu juntei da tela. Se for uma pergunta ou um "
     "exercício, responda. Se eu pedi algo dentro do próprio texto, faça. Senão, "
-    "resuma ou diga o que é importante. Responda em português do Brasil."
+    "resuma ou diga o que é importante."
+)
+
+# A resposta segue o idioma do conteúdo, não um idioma fixo.
+SAME_LANGUAGE = (
+    "Responda no mesmo idioma do conteúdo: se vier em inglês, responda em inglês; "
+    "se vier em português, responda em português; e assim por diante."
 )
 
 # Grudado no fim da pergunta: o bloco de texto vai pra OCR, autodigitação etc.,
@@ -240,7 +246,7 @@ def extract_text(
         # Sem texto, o modelo faz o melhor que dá com o recorte. Em todo caso,
         # pede resposta sem markdown.
         base = (question or "").strip() or DEFAULT_ASK_PROMPT
-        prompt = f"{base}\n\n{NO_MARKDOWN}"
+        prompt = f"{base}\n\n{SAME_LANGUAGE}\n{NO_MARKDOWN}"
     else:
         prompt = OCR_PROMPT
     text = _send(settings, build_request(settings, image_png, prompt), transport)
@@ -261,7 +267,7 @@ def ask_text(block: str, *, settings: VisionSettings, transport: Transport = _po
         raise ConfigError("falta a chave da API do Claude. Ponha ela nas Configurações")
     if not block.strip():
         raise RelayError("o bloco está vazio")
-    prompt = f"{DEFAULT_ASK_TEXT_PROMPT}\n\n--- texto ---\n{block}\n\n{NO_MARKDOWN}"
+    prompt = f"{DEFAULT_ASK_TEXT_PROMPT}\n\n--- texto ---\n{block}\n\n{SAME_LANGUAGE}\n{NO_MARKDOWN}"
     text = strip_markdown(_send(settings, build_text_request(settings, prompt), transport))
     if not text:
         raise RelayError("o Claude não devolveu texto nenhum")
