@@ -738,6 +738,14 @@ class CaptureVM:
         self.snippets += 1
         self.block_changed.emit(self.block)
 
+    def append_text(self, text: str) -> None:
+        """Junta um texto no bloco sem contar como recorte (ex.: resposta do Claude)."""
+        text = text.strip()
+        if not text:
+            return
+        self.block = f"{self.block}\n\n{text}" if self.block else text
+        self.block_changed.emit(self.block)
+
     def set_block(self, text: str) -> None:
         """Deixa você editar o bloco à mão (a tela devolve o que você digitou)."""
         self.block = text

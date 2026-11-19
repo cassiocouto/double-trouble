@@ -773,3 +773,18 @@ quem cifra, num `tttttt.json` modo 600, e é posta nas Configurações. O comand
 `autodigitar` nem vê a senha: só repassa o texto cifrado pro `tttttt`, que
 decifra. Em tempo de execução, só a biblioteca padrão e o openssl do sistema
 (como o scrot do screenshot).
+
+**D110. Melhorias no bloco de OCR: editar, perguntar o bloco inteiro,
+autodigitar aberto e estimativa de tempo.**
+Quatro coisas na tela "Ler tela":
+- O "Texto juntado" é editável de propósito (`set_editable(True)`), pra corrigir o
+  OCR e a resposta à mão. Como ele guarda o bloco, dá pra pôr a pergunta dentro.
+- Botão "Perguntar ao Claude" manda o bloco inteiro (só texto, sem imagem) pro
+  Claude e junta a resposta no próprio bloco. É o `vision.ask_text`, que divide o
+  POST com o `extract_text` num `_send` só. A resposta vem sem markdown.
+- O botão "Digitar" e o comando `autodigitar` rodado pelo menu agora **cifram o
+  texto aberto na interface** (antes o menu esperava texto já cifrado). Quem
+  roda digita normal, e a interface cifra com a senha antes de mandar.
+- Toda autodigitação mostra uma estimativa de tempo (espera + caracteres pela
+  velocidade). A velocidade (caracteres por segundo do `tttttt`) é um ajuste nas
+  Configurações, junto da senha, em `AutotypeSettings` (`tttttt.json`).

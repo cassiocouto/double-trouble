@@ -271,7 +271,7 @@ class RunPage:
         actions = Gtk.Box(spacing=12)
         actions.set_halign(Gtk.Align.CENTER)
         self.run_btn = button("Rodar", "pill", "suggested-action")
-        self.run_btn.connect("clicked", lambda *_: self.vm.request_run(self.form.values()))
+        self.run_btn.connect("clicked", lambda *_: self._run())
         self.cancel_btn = button("Cancelar", "pill", "destructive-action")
         self.cancel_btn.connect("clicked", lambda *_: self.vm.cancel())
         actions.append(self.run_btn)
@@ -334,6 +334,38 @@ class RunPage:
         self.image.container.set_visible(True)
         on_read = (lambda img: self.win.show_capture(self.vm.machine, prefill=img)) if is_image else None
         self.image.show(data, is_image, suggested_name=self.vm.command["nome"], on_read=on_read)
+
+    def _run(self) -> None:
+        values = self.form.values()
+        if self.vm.command.get("nome") == "autodigitar":
+            values = self._encrypt_autotype(values)
+            if values is None:
+                return
+        self.vm.request_run(values)
+
+    def _encrypt_autotype(self, values: dict) -> dict | None:
+        """Cifra o texto do autodigitar aqui, pra quem roda pelo menu digitar aberto."""
+        from ..core import autotype
+
+        texto = values.get("texto", "")
+        if not str(texto).strip():
+            return values  # deixa o formulário reclamar do obrigatório
+        try:
+            cfg = autotype.load_settings()
+            cifrado = autotype.encrypt(str(texto), cfg.senha)
+        except Exception as e:
+            self.win.toast(str(e))
+            return None
+        if len(cifrado) > MAX_MULTILINE:
+            self.win.toast(f"o texto é grande demais (cifrado passa de {MAX_MULTILINE})")
+            return None
+        try:
+            atraso = int(values.get("atraso", 3))
+        except (TypeError, ValueError):
+            atraso = 3
+        eta = autotype.estimate_seconds(len(str(texto)), atraso=atraso, cps=cfg.cps)
+        self.win.toast(f"vai digitar em uns ~{eta}s")
+        return {**values, "texto": cifrado}
 
     def _copy(self, *_):
         copy_to_clipboard(self.page, self.vm.output_text())
@@ -562,9 +594,21 @@ class CapturePage:
         for w in (self.img_head, self.crop.widget, self.under):
             w.set_visible(False)
 
-        box.append(label("Texto juntado", "heading"))
+        block_head = Gtk.Box(spacing=6)
+        block_head.append(label("Texto juntado (dá pra editar)", "heading"))
+        bspacer = Gtk.Box()
+        bspacer.set_hexpand(True)
+        block_head.append(bspacer)
+        self.ask_block_btn = button("Perguntar ao Claude", "flat")
+        self.ask_block_btn.set_tooltip_text("Manda o bloco inteiro (texto) pro Claude e junta a resposta aqui")
+        self.ask_block_btn.connect("clicked", lambda *_: self._ask_block())
+        block_head.append(self.ask_block_btn)
+        box.append(block_head)
+
         self.textview = Gtk.TextView()
         self.textview.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
+        self.textview.set_editable(True)  # pode corrigir o OCR e a resposta à mão
+        self.textview.set_cursor_visible(True)
         for side in ("top", "bottom", "left", "right"):
             getattr(self.textview, f"set_{side}_margin")(8)
         self.buffer = self.textview.get_buffer()
@@ -587,7 +631,7 @@ class CapturePage:
         self.release_btn = button("Liberar (salvar)", "pill", "suggested-action")
         self.release_btn.connect("clicked", lambda *_: self._release())
         self.type_btn = button(f"Digitar em {machine}", "flat")
-        self.type_btn.set_tooltip_text("Manda o bloco pra máquina autodigitar (comando 'autodigitar' + 'autotyper')")
+        self.type_btn.set_tooltip_text("Cifra o bloco e manda pra máquina digitar (comando 'autodigitar' + 'tttttt')")
         self.type_btn.connect("clicked", lambda *_: self._autotype())
         clear_btn = button("Limpar", "flat")
         clear_btn.connect("clicked", lambda *_: self.vm.clear())
@@ -700,6 +744,7 @@ class CapturePage:
         self.copy_btn.set_sensitive(self.vm.has_text)
         self.release_btn.set_sensitive(self.vm.has_text)
         self.type_btn.set_sensitive(self.vm.has_text)
+        self.ask_block_btn.set_sensitive(self.vm.has_text and not busy)
         if self.vm.error:
             self.status.set_label(self.vm.error)
         elif not busy and self.vm.snippets:
@@ -724,14 +769,16 @@ class CapturePage:
             self.win.toast("o bloco está vazio")
             return
         try:
-            cifrado = autotype.encrypt(bloco, autotype.load_password())
+            cfg = autotype.load_settings()
+            cifrado = autotype.encrypt(bloco, cfg.senha)
         except Exception as e:
             self.win.toast(str(e))
             return
         if len(cifrado) > MAX_MULTILINE:
             self.win.toast(f"o bloco é grande demais (cifrado passa de {MAX_MULTILINE})")
             return
-        self.win.toast(f"mandando pra {self.machine} digitar…")
+        eta = autotype.estimate_seconds(len(bloco), atraso=3, cps=cfg.cps)
+        self.win.toast(f"mandando pra {self.machine} digitar (uns ~{eta}s)…")
 
         def done(outcome) -> None:
             r = outcome.result or {}
@@ -744,3 +791,28 @@ class CapturePage:
         self.win.service.run(
             self.machine, "autodigitar", {"texto": cifrado}, None, lambda ev: None, done, self.win.toast
         )
+
+    def _ask_block(self) -> None:
+        """Manda o bloco inteiro (texto) pro Claude e junta a resposta no bloco."""
+        from ..core import vision
+
+        bloco = self.vm.block
+        if not bloco.strip():
+            self.win.toast("o bloco está vazio")
+            return
+        self.status.set_label("perguntando ao Claude sobre o bloco…")
+        self._busy(True)
+
+        def work():
+            return vision.ask_text(bloco, settings=vision.load_settings())
+
+        def done(resposta: str) -> None:
+            self._busy(False)
+            self.vm.append_text(resposta)
+            self.status.set_label("resposta do Claude juntada no bloco")
+
+        def fail(msg: str) -> None:
+            self._busy(False)
+            self.status.set_label(msg)
+
+        self.win.service.submit(work, done, fail)

@@ -45,6 +45,13 @@ DEFAULT_ASK_PROMPT = (
     "importante aqui e o que fazer a seguir. Responda em português do Brasil."
 )
 
+# Mandar o bloco inteiro (só texto, sem imagem) pro Claude.
+DEFAULT_ASK_TEXT_PROMPT = (
+    "Abaixo vai um texto que eu juntei da tela. Se for uma pergunta ou um "
+    "exercício, responda. Se eu pedi algo dentro do próprio texto, faça. Senão, "
+    "resuma ou diga o que é importante. Responda em português do Brasil."
+)
+
 # Grudado no fim da pergunta: o bloco de texto vai pra OCR, autodigitação etc.,
 # então a resposta tem que ser texto puro, sem markdown.
 NO_MARKDOWN = (
@@ -187,6 +194,37 @@ def _error_message(status: int, body: bytes) -> str:
     return f"a API do Claude recusou ({status}{': ' + detail if detail else ''})"
 
 
+def build_text_request(settings: VisionSettings, prompt: str) -> dict:
+    """Pedido só de texto (sem imagem), pra mandar o bloco inteiro pro Claude."""
+    return {
+        "model": settings.model,
+        "max_tokens": settings.max_tokens,
+        "messages": [{"role": "user", "content": [{"type": "text", "text": prompt}]}],
+    }
+
+
+def _send(settings: VisionSettings, body_obj: dict, transport: Transport) -> str:
+    """Faz o POST, trata os erros comuns e devolve o texto da resposta (sem limpar)."""
+    body = json.dumps(body_obj).encode("utf-8")
+    headers = {
+        "content-type": "application/json",
+        "anthropic-version": API_VERSION,
+        "x-api-key": settings.api_key,
+    }
+    status, raw = transport(API_URL, headers, body, TIMEOUT)
+    if status != 200:
+        raise RelayError(_error_message(status, raw))
+    try:
+        data = json.loads(raw)
+    except ValueError:
+        raise RelayError("a API do Claude respondeu algo que não é JSON") from None
+    if not isinstance(data, dict):
+        raise RelayError("a API do Claude respondeu num formato inesperado")
+    if data.get("stop_reason") == "refusal":
+        raise RelayError("o Claude recusou responder")
+    return _message_text(data)
+
+
 def extract_text(
     image_png: bytes,
     *,
@@ -205,26 +243,26 @@ def extract_text(
         prompt = f"{base}\n\n{NO_MARKDOWN}"
     else:
         prompt = OCR_PROMPT
-    body = json.dumps(build_request(settings, image_png, prompt)).encode("utf-8")
-    headers = {
-        "content-type": "application/json",
-        "anthropic-version": API_VERSION,
-        "x-api-key": settings.api_key,
-    }
-    status, raw = transport(API_URL, headers, body, TIMEOUT)
-    if status != 200:
-        raise RelayError(_error_message(status, raw))
-    try:
-        data = json.loads(raw)
-    except ValueError:
-        raise RelayError("a API do Claude respondeu algo que não é JSON") from None
-    if not isinstance(data, dict):
-        raise RelayError("a API do Claude respondeu num formato inesperado")
-    if data.get("stop_reason") == "refusal":
-        raise RelayError("o Claude recusou responder sobre esta imagem")
-    text = _message_text(data)
+    text = _send(settings, build_request(settings, image_png, prompt), transport)
     if mode == "pergunta":
         text = strip_markdown(text)  # OCR fica literal; resposta vem sem markdown
     if not text:
         raise RelayError("o Claude não devolveu texto nenhum pra esta imagem")
+    return text
+
+
+def ask_text(block: str, *, settings: VisionSettings, transport: Transport = _post) -> str:
+    """Manda o bloco de texto inteiro (sem imagem) pro Claude e devolve a resposta.
+
+    O bloco é editável, então quem usa pode pôr a pergunta dentro dele. Sem
+    pergunta explícita, o modelo faz o melhor que dá. A resposta vem sem markdown.
+    """
+    if not settings.configured:
+        raise ConfigError("falta a chave da API do Claude. Ponha ela nas Configurações")
+    if not block.strip():
+        raise RelayError("o bloco está vazio")
+    prompt = f"{DEFAULT_ASK_TEXT_PROMPT}\n\n--- texto ---\n{block}\n\n{NO_MARKDOWN}"
+    text = strip_markdown(_send(settings, build_text_request(settings, prompt), transport))
+    if not text:
+        raise RelayError("o Claude não devolveu texto nenhum")
     return text

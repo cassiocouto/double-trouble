@@ -112,18 +112,23 @@ class PreferencesDialog:
         group = Adw.PreferencesGroup()
         group.set_title("Autodigitar (tttttt)")
         group.set_description(
-            "O botão 'Digitar' cifra o bloco com esta senha (AES-256) e manda pro 'tttttt' "
-            "da outra máquina, que abre com a mesma senha. A senha fica só nesta máquina."
+            "O botão 'Digitar' cifra o texto com esta senha (AES-256) e manda pro 'tttttt' "
+            "da outra máquina, que abre com a mesma senha. A velocidade (caracteres por "
+            "segundo) é só pra estimar quanto a digitação vai levar."
         )
         try:
-            senha = autotype.load_password()
+            cur = autotype.load_settings()
         except Exception:  # config quebrado: começa em branco
-            senha = ""
+            cur = autotype.AutotypeSettings()
         self._tttttt_pass = Adw.PasswordEntryRow()
         self._tttttt_pass.set_title("Senha do tttttt")
-        self._tttttt_pass.set_text(senha)
+        self._tttttt_pass.set_text(cur.senha)
         group.add(self._tttttt_pass)
-        save = button("Salvar senha", "pill", "suggested-action")
+        self._tttttt_cps = Adw.SpinRow.new_with_range(1, 200, 1)
+        self._tttttt_cps.set_title("Velocidade (caracteres por segundo)")
+        self._tttttt_cps.set_value(cur.cps)
+        group.add(self._tttttt_cps)
+        save = button("Salvar", "pill", "suggested-action")
         save.set_halign(Gtk.Align.CENTER)
         save.set_margin_top(12)
         save.connect("clicked", self._save_tttttt)
@@ -146,12 +151,13 @@ class PreferencesDialog:
         from ..core import autotype
 
         senha = self._tttttt_pass.get_text()
+        cps = int(self._tttttt_cps.get_value())
         try:
-            autotype.save_password(senha)
+            autotype.save_settings(autotype.AutotypeSettings(senha=senha, cps=cps))
         except Exception as e:
             self.toast(f"Não consegui salvar ({e})")
             return
-        self.toast("Senha salva" if senha else "Senha removida")
+        self.toast("Salvo" if senha else "Senha removida")
 
     def _clear(self) -> None:
         for group, w in self._rows:
