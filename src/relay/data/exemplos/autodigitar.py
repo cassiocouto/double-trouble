@@ -12,12 +12,12 @@ a senha dele e digita na janela em foco.
 Dica: use o 'atraso' pra ter tempo de clicar na janela certa antes de começar.
 """
 
-import shutil
+import os
 import subprocess
 import sys
 import time
 
-from relay.command import params
+from relay.command import params, user_path, which
 
 ICONE = "input-keyboard-symbolic"
 CATEGORIA = "Teclado"
@@ -51,16 +51,21 @@ atraso = p.get("atraso", 3)
 if not texto.strip():
     sys.exit("não veio texto pra digitar")
 
-if shutil.which(PROGRAMA) is None:
-    sys.exit(f"o '{PROGRAMA}' não está instalado nesta máquina (precisa estar no PATH)")
+# O agente roda como serviço do systemd, com PATH curto. which() procura também
+# nas pastas de binário do usuário (~/.local/bin etc.) e no shell de login.
+prog = which(PROGRAMA)
+if prog is None:
+    sys.exit(f"não achei o '{PROGRAMA}' (procurei no PATH, em ~/.local/bin, ~/bin, /usr/local/bin e no shell de login)")
 
 if atraso:
     print(f"digitando em {atraso}s… clique na janela certa", flush=True)
     time.sleep(atraso)
 
+# Passa o PATH completo pro tttttt, caso ele precise de outros programas do usuário.
+env = {**os.environ, "PATH": user_path()}
 prazo = max(5, TIMEOUT - atraso - 5)
 try:
-    r = subprocess.run([PROGRAMA], input=texto, text=True, capture_output=True, timeout=prazo)
+    r = subprocess.run([prog], input=texto, text=True, capture_output=True, timeout=prazo, env=env)
 except (OSError, subprocess.TimeoutExpired) as e:
     sys.exit(f"não consegui rodar o {PROGRAMA} ({e})")
 

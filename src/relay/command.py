@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import secrets
 import shutil
 import subprocess
@@ -23,6 +24,37 @@ from typing import Any
 _cache: dict[str, Any] | None = None
 
 SESSION_KEYS = ("DISPLAY", "WAYLAND_DISPLAY", "XAUTHORITY", "DBUS_SESSION_BUS_ADDRESS", "XDG_RUNTIME_DIR")
+# Pastas de binário do usuário que o PATH curto do serviço do systemd costuma
+# deixar de fora.
+USER_BIN_DIRS = ("~/.local/bin", "~/bin", "~/.cargo/bin", "/usr/local/bin")
+_SAFE_NAME = re.compile(r"^[A-Za-z0-9_.-]+$")
+
+
+def user_path() -> str:
+    """O PATH do serviço mais as pastas de binário do usuário."""
+    extra = [os.path.expanduser(d) for d in USER_BIN_DIRS]
+    return os.pathsep.join([*extra, os.environ.get("PATH", "")])
+
+
+def which(name: str) -> str | None:
+    """Acha um programa mesmo fora do PATH curto do serviço do systemd.
+
+    Procura no PATH e nas pastas de binário do usuário. Se não achar, pergunta
+    pro shell de login do usuário (que tem o PATH completo, com o que os
+    arquivos de perfil adicionam). Devolve o caminho cheio, ou None.
+    """
+    found = shutil.which(name, path=user_path())
+    if found or not _SAFE_NAME.match(name):
+        return found
+    shell = os.environ.get("SHELL") or "/bin/sh"
+    try:
+        r = subprocess.run(
+            [shell, "-lc", f"command -v -- {name}"], capture_output=True, text=True, timeout=10, check=False
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    out = r.stdout.strip().splitlines()
+    return out[0] if r.returncode == 0 and out and os.path.exists(out[0]) else None
 
 
 def params() -> dict[str, Any]:
