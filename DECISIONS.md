@@ -808,6 +808,8 @@ completo pra ele, caso precise de outros programas.
 **D113. Mais tempo pro autodigitar, e estimativa legível.**
 Digitar um bloco grande é lento (o `tttttt` digita tecla por tecla, uns 10/s), e
 o limite de 3 min do comando estourava no meio. Subimos o `TIMEOUT` do
-`autodigitar` pra 900 s (15 min), bem abaixo do teto do agente (1 h). A
-estimativa no toast virou legível (`~2min54s` em vez de `~174s`) e, se a conta
-passar perto do limite, avisa pra mandar um bloco menor.
+`autodigitar` pro teto do agente, 3600 s (1 h), que cobre com folga até o maior
+bloco que dá pra mandar; na prática você nunca encosta. O limite só existe pra
+matar um `tttttt` travado. A estimativa no toast virou legível (`~2min54s` em
+vez de `~174s`) e, se a conta chegar perto do teto, avisa pra mandar um bloco
+menor.

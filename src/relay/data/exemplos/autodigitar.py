@@ -21,9 +21,10 @@ from relay.command import params, user_path, which
 
 ICONE = "input-keyboard-symbolic"
 CATEGORIA = "Teclado"
-# Digitar um bloco grande leva tempo (o tttttt digita tecla por tecla). 15 min
-# cobre blocos bem grandes; se passar disso, mande um bloco menor.
-TIMEOUT = 900
+# Digitar um bloco grande leva tempo (o tttttt digita tecla por tecla, uns 10/s).
+# 1 hora é o teto do agente e cobre até o maior bloco que dá pra mandar; na
+# prática você nunca encosta. O limite existe só pra matar um tttttt travado.
+TIMEOUT = 3600
 PROGRAMA = "tttttt"
 
 PARAMETROS = [
