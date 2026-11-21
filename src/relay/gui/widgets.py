@@ -66,6 +66,53 @@ def toast(text: str, timeout: int = 4) -> Adw.Toast:
     return t
 
 
+def detox_button(textview: Gtk.TextView, win: Any, *, on_done: Any = None) -> Gtk.Button:
+    """Botão 'Detoxify' pra qualquer caixa de texto editável.
+
+    Reescreve o texto da caixa pra soar humano (tira travessão, clichê, hype...),
+    com a MESMA chave da API do Claude do resto da interface, e troca o texto
+    da caixa pela versão limpa. A chamada roda num thread (win.service.submit),
+    então a tela não trava. `on_done(texto)` é chamado depois, se vier.
+    """
+    b = button("Detoxify", "flat")
+    b.set_tooltip_text("Reescreve o texto pra soar humano, tirando os vícios de IA (usa a chave do Claude)")
+
+    def current_text() -> str:
+        buf = textview.get_buffer()
+        return buf.get_text(buf.get_start_iter(), buf.get_end_iter(), False)
+
+    def run(*_a: object) -> None:
+        from ..core import detox, vision
+
+        texto = current_text()
+        if not texto.strip():
+            win.toast("não tem texto pra limpar")
+            return
+        b.set_sensitive(False)
+        b.set_label("limpando…")
+
+        def work() -> str:
+            return detox.detoxify_text(texto, settings=vision.load_settings())
+
+        def done(limpo: str) -> None:
+            b.set_sensitive(True)
+            b.set_label("Detoxify")
+            textview.get_buffer().set_text(limpo)
+            win.toast("texto reescrito com o Detoxify")
+            if on_done is not None:
+                on_done(limpo)
+
+        def fail(msg: str) -> None:
+            b.set_sensitive(True)
+            b.set_label("Detoxify")
+            win.toast(msg)
+
+        win.service.submit(work, done, fail)
+
+    b.connect("clicked", run)
+    return b
+
+
 def copy_to_clipboard(widget: Gtk.Widget, text: str) -> None:
     value = GObject.Value(GObject.TYPE_STRING, text)
     widget.get_clipboard().set_content(Gdk.ContentProvider.new_for_value(value))
@@ -143,8 +190,9 @@ class OutputView(Gtk.ScrolledWindow):
 class FormView:
     """Liga os campos do FormModel a widgets do libadwaita."""
 
-    def __init__(self, form: FormModel, values: dict[str, Any]):
+    def __init__(self, form: FormModel, values: dict[str, Any], win: Any = None):
         self.form = form
+        self.win = win  # se vier, as caixas de texto longo ganham o botão Detoxify
         self.group = Adw.PreferencesGroup()
         self.group.set_title("Parâmetros" if form.uses_params else "Argumentos")
         self.widgets: dict[str, Gtk.Widget] = {}
@@ -206,9 +254,6 @@ class FormView:
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
         box.set_margin_top(6)
         box.set_margin_bottom(6)
-        box.append(label(title, "heading"))
-        if f.help:
-            box.append(label(f.help, "dim-label", "caption"))
         tv = Gtk.TextView()
         tv.set_monospace(f.kind == "argumentos")
         tv.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
@@ -216,6 +261,18 @@ class FormView:
         for side in ("top", "bottom", "left", "right"):
             getattr(tv, f"set_{side}_margin")(8)
         tv.get_buffer().set_text("" if value is None else str(value))
+        head = Gtk.Box(spacing=6)
+        head.append(label(title, "heading"))
+        # Só texto corrido (texto_longo) ganha Detoxify; "argumentos" é linha de
+        # comando, não prosa, então fica de fora.
+        if self.win is not None and f.kind == "texto_longo":
+            spacer = Gtk.Box()
+            spacer.set_hexpand(True)
+            head.append(spacer)
+            head.append(detox_button(tv, self.win))
+        box.append(head)
+        if f.help:
+            box.append(label(f.help, "dim-label", "caption"))
         frame = Gtk.Frame()
         frame.set_child(tv)
         box.append(frame)

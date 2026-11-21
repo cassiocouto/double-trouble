@@ -822,3 +822,21 @@ primeiro; `gnome-shell` e `gnome-screenshot` ficam como último recurso. Os dois
 entraram no `FLASHES`, então, se forem usados por falta de uma silenciosa, o
 comando avisa pra instalar o `scrot`. A saída do comando diz qual ferramenta
 usou ("print tirado com ..."), pra conferir.
+
+**D115. Detoxify virou ferramenta da interface, reusando a chave do Claude.**
+O detoxify (projeto à parte do Cass) reescreve texto pra soar humano, tirando os
+"tells" de IA. Trouxemos ele pro Relay reimplementado na biblioteca padrão (sem
+o pacote detoxify nem SDK): as regras viraram data em `core/detox.py` e a chamada
+reusa o `vision._send` com a MESMA chave/modelo do OCR e do "perguntar"
+(`claude.json`), então não tem config nova. Um `detox_button()` em `widgets.py`
+liga o botão "Detoxify" a qualquer `Gtk.TextView` editável. Hoje está no bloco da
+tela "Ler tela" e nos campos de texto longo dos comandos (o `argumentos`, que é
+linha de comando e não prosa, fica de fora).
+
+**D116. Duas regras de detox que remontam o layout ficam desligadas por padrão.**
+No detoxify original todas as regras vêm ligadas, incluindo `merge_paragraphs`
+(junta tudo num parágrafo só) e `reconnect_lines` (reemenda linhas quebradas).
+No Relay o botão age em caixa qualquer, muita vez texto de OCR com quebras de
+propósito ou lista, então essas duas (`default_on=False`) estragariam o layout e
+ficam de fora do conjunto padrão. As que tiram "tell" (travessão, clichê, hype,
+etc.) continuam ligadas. Dá pra ligar as duas passando `rules=` na chamada.

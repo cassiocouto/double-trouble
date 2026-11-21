@@ -25,6 +25,7 @@ from .widgets import (  # noqa: E402
     OutputView,
     button,
     copy_to_clipboard,
+    detox_button,
     label,
     page,
     row,
@@ -264,7 +265,7 @@ class RunPage:
             head.append(label(f"Aviso: {w}", "warning", "caption"))
         box.append(head)
 
-        self.form = FormView(vm.form, vm.values)
+        self.form = FormView(vm.form, vm.values, win=self.win)
         if not self.form.empty:
             box.append(self.form.group)
 
@@ -607,6 +608,10 @@ class CapturePage:
         box.append(block_head)
 
         self.textview = Gtk.TextView()
+        # Botão Detoxify no cabeçalho do bloco: reescreve o texto pra soar humano.
+        # Fica depois de criar o textview, porque ele precisa da caixa pra ler/trocar.
+        self.detox_btn = detox_button(self.textview, win)
+        block_head.append(self.detox_btn)
         self.textview.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
         self.textview.set_editable(True)  # pode corrigir o OCR e a resposta à mão
         self.textview.set_cursor_visible(True)
@@ -746,6 +751,7 @@ class CapturePage:
         self.release_btn.set_sensitive(self.vm.has_text)
         self.type_btn.set_sensitive(self.vm.has_text)
         self.ask_block_btn.set_sensitive(self.vm.has_text and not busy)
+        self.detox_btn.set_sensitive(self.vm.has_text and not busy)
         if self.vm.error:
             self.status.set_label(self.vm.error)
         elif not busy and self.vm.snippets:
