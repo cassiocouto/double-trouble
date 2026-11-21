@@ -716,9 +716,15 @@ class CapturePage:
         self.extract_btn.set_label("Perguntar" if pergunta else "Ler recorte")
 
     def _take_shot(self) -> None:
+        from ..core import screenshot
+
         self.status.set_label("tirando o print…")
         self.shot_btn.set_sensitive(False)
         self._busy(True)
+        try:
+            tool = screenshot.load_settings().tool
+        except Exception:  # config quebrado: deixa o comando escolher
+            tool = screenshot.AUTO
 
         def done(outcome) -> None:
             self.shot_btn.set_sensitive(True)
@@ -745,7 +751,9 @@ class CapturePage:
             self._busy(False)
             self.status.set_label(msg)
 
-        self.win.service.run(self.machine, "screenshot", {"cursor": False}, None, lambda ev: None, done, fail)
+        self.win.service.run(
+            self.machine, "screenshot", {"cursor": False, "ferramenta": tool}, None, lambda ev: None, done, fail
+        )
 
     def _extract(self) -> None:
         if not self.crop.has_image:

@@ -833,6 +833,18 @@ liga o botão "Detoxify" a qualquer `Gtk.TextView` editável. Hoje está no bloc
 tela "Ler tela" e nos campos de texto longo dos comandos (o `argumentos`, que é
 linha de comando e não prosa, fica de fora).
 
+**D118. A ferramenta de print é escolhível nas Configurações.**
+O `screenshot` escolhia a ferramenta sozinho e pegava o scrot, sem como trocar.
+Agora o comando tem o parâmetro `ferramenta` (escolha): "automático" (a ordem
+esperta de sempre, silenciosas primeiro) é o padrão, e dá pra fixar uma na mão.
+Escolhida na mão, ele usa só ela e avisa claro se não estiver instalada (o print
+é tirado na OUTRA máquina, que precisa ter a ferramenta). Entraram no catálogo o
+`xfce4-screenshooter` e o `spectacle` (silenciosas), além das que já tinha. A
+preferência fica em `core/screenshot.py` (`ScreenshotSettings`/`screenshot.json`)
+e aparece nas Configurações, num seletor que salva ao trocar. A tela "Ler tela"
+manda a escolha pro comando. A lista `TOOLS` tem que bater com as `opcoes` do
+comando (um teste confere).
+
 **D117. A resposta do Claude tem caixa própria, separada do bloco juntado.**
 Antes a resposta do "Perguntar ao Claude" era grudada no mesmo bloco do texto
 juntado (OCR). Agora ela vai numa caixa à parte, "Resposta do Claude", editável

@@ -1,16 +1,21 @@
 """Tira um print da tela desta máquina e manda a imagem pra quem pediu.
 
-Não mostra notificação, não pisca a tela e não usa atalho de teclado.
+Não mostra notificação, não pisca a tela (nas silenciosas) e não usa atalho.
 
-Importante: o jeito que funciona depende da sessão gráfica.
-  * X11: scrot, maim e ImageMagick tiram o print em silêncio, sem piscar a
-    tela. O gnome-screenshot também funciona, mas pisca a tela ao salvar; se
-    for o único instalado, o comando avisa pra instalar o scrot. Instale um:
-    sudo apt install scrot
+A ferramenta pode vir escolhida no parâmetro 'ferramenta'. Com 'automático' (o
+padrão), o comando tenta na ordem esperta: as que pegam a tela em silêncio
+primeiro, e as que piscam por último. Escolhendo uma na mão, ele usa só ela e
+avisa claro se não estiver instalada.
+
+Depende da sessão gráfica:
+  * X11: scrot, maim, ImageMagick (import), ffmpeg, xfce4-screenshooter e
+    spectacle pegam o print sem piscar. O gnome-screenshot e o gnome-shell
+    também funcionam, mas piscam a tela ao salvar.
+    Instale uma silenciosa: sudo apt install scrot
   * Wayland (GNOME): por segurança, o sistema bloqueia print silencioso de
     programas de fora (a API do shell responde "Screenshot is not allowed").
-    Não há caminho sem algum aviso. Pra print silencioso, use a sessão "Ubuntu
-    on Xorg" na tela de login, ou instale uma extensão que exponha isso.
+    Pra print silencioso, use a sessão "Ubuntu on Xorg" na tela de login.
+    No KDE em Wayland, o spectacle funciona; em wlroots (sway), o grim.
 """
 
 import os
@@ -25,14 +30,39 @@ from relay.command import params
 ICONE = "applets-screenshooter-symbolic"
 CATEGORIA = "Tela"
 TIMEOUT = 20
+# Tem que bater com relay.core.screenshot.TOOLS (um teste confere). O primeiro,
+# 'automático', deixa o comando escolher sozinho.
 PARAMETROS = [
     {"nome": "cursor", "tipo": "booleano", "rotulo": "Incluir o cursor do mouse"},
+    {
+        "nome": "ferramenta",
+        "tipo": "escolha",
+        "rotulo": "Ferramenta",
+        "ajuda": "Qual programa tira o print. 'automático' tenta na ordem esperta.",
+        "opcoes": [
+            "automático",
+            "scrot",
+            "maim",
+            "imagemagick",
+            "ffmpeg",
+            "xfce4-screenshooter",
+            "spectacle",
+            "grim",
+            "gnome-screenshot",
+            "gnome-shell",
+        ],
+        "padrao": "automático",
+    },
 ]
+
+AUTO = "automático"
 
 out_file = os.environ.get("RELAY_OUTPUT_FILE")
 if not out_file:
     sys.exit("este comando precisa do Relay (RELAY_OUTPUT_FILE não está definido)")
-cursor = params().get("cursor", False)
+p = params()
+cursor = p.get("cursor", False)
+escolha = p.get("ferramenta", AUTO)
 shot = Path(out_file).with_name("shot.png")
 session = os.environ.get("XDG_SESSION_TYPE", "").lower()
 wayland = session == "wayland" or (not session and os.environ.get("WAYLAND_DISPLAY"))
@@ -57,45 +87,39 @@ def gnome_shell() -> list[str]:
     ]
 
 
-# (nome, comando). Cada um escreve em shot.png. As ferramentas que pegam a tela
-# em silêncio (sem piscar) vêm primeiro; gnome-shell e gnome-screenshot ficam por
-# último, porque piscam a tela ao salvar.
-X11_SILENT = [
-    ("scrot", ["scrot", "-o", *(["-p"] if cursor else []), str(shot)]),
-    ("maim", ["maim", *([] if cursor else ["--hidecursor"]), str(shot)]),
-    ("imagemagick", ["import", "-window", "root", str(shot)]),
-    (
+# Catálogo: nome -> comando que escreve em shot.png. O cursor entra onde a
+# ferramenta sabe incluir; nas outras ele é ignorado.
+CATALOG = {
+    "scrot": ["scrot", "-o", *(["-p"] if cursor else []), str(shot)],
+    "maim": ["maim", *([] if cursor else ["--hidecursor"]), str(shot)],
+    "imagemagick": ["import", "-window", "root", str(shot)],
+    "ffmpeg": [
         "ffmpeg",
-        [
-            "ffmpeg",
-            "-y",
-            "-loglevel",
-            "error",
-            "-f",
-            "x11grab",
-            "-i",
-            os.environ.get("DISPLAY", ":0"),
-            "-frames:v",
-            "1",
-            str(shot),
-        ],
-    ),
-]
-X11_FLASH = [
-    ("gnome-shell", gnome_shell()),  # só se nenhuma das silenciosas existir
-    ("gnome-screenshot", ["gnome-screenshot", *(["-p"] if cursor else []), "-f", str(shot)]),
-]
-WAYLAND_METHODS = [
-    ("gnome-shell", gnome_shell()),  # bloqueado no GNOME novo, mas tenta
-    ("grim", ["grim", *(["-c"] if cursor else []), str(shot)]),  # só compositores wlroots
-]
+        "-y",
+        "-loglevel",
+        "error",
+        "-f",
+        "x11grab",
+        "-i",
+        os.environ.get("DISPLAY", ":0"),
+        "-frames:v",
+        "1",
+        str(shot),
+    ],
+    "xfce4-screenshooter": ["xfce4-screenshooter", "-f", "-s", str(shot)],
+    "spectacle": ["spectacle", "-b", "-n", "-o", str(shot)],
+    "grim": ["grim", *(["-c"] if cursor else []), str(shot)],
+    "gnome-screenshot": ["gnome-screenshot", *(["-p"] if cursor else []), "-f", str(shot)],
+    "gnome-shell": gnome_shell(),
+}
 
-# No X11, as silenciosas primeiro; as que piscam (gnome-shell, gnome-screenshot)
-# ficam como último recurso.
-METHODS = WAYLAND_METHODS if wayland else [*X11_SILENT, *X11_FLASH]
+# Ordem do 'automático'. No X11, as silenciosas primeiro; as que piscam
+# (gnome-shell, gnome-screenshot) ficam como último recurso.
+X11_SILENT = ["scrot", "maim", "imagemagick", "ffmpeg", "xfce4-screenshooter", "spectacle"]
+X11_FLASH = ["gnome-shell", "gnome-screenshot"]
+WAYLAND_ORDER = ["gnome-shell", "grim", "spectacle"]
 
-
-FLASHES = {"gnome-screenshot", "gnome-shell"}  # podem piscar a tela; scrot/maim/import não piscam
+FLASHES = {"gnome-screenshot", "gnome-shell"}  # podem piscar; as outras não piscam
 
 
 def png_size(path: Path) -> str:
@@ -115,9 +139,21 @@ def worked() -> bool:
     return shot.exists() and shot.stat().st_size > 0
 
 
+if escolha == AUTO:
+    order = WAYLAND_ORDER if wayland else [*X11_SILENT, *X11_FLASH]
+elif escolha in CATALOG:
+    order = [escolha]
+else:
+    sys.exit(f"não conheço a ferramenta '{escolha}'")
+
+# Escolha na mão que não está instalada: avisa claro, sem cair pra outra.
+if escolha != AUTO and shutil.which(CATALOG[escolha][0]) is None:
+    sys.exit(f"o '{escolha}' não está instalado nesta máquina (precisa estar no PATH)")
+
 errors = []
 tried_any = False
-for name, cmd in METHODS:
+for name in order:
+    cmd = CATALOG[name]
     if shutil.which(cmd[0]) is None:
         continue
     tried_any = True
@@ -136,12 +172,15 @@ for name, cmd in METHODS:
     detail = (r.stderr or r.stdout or "sem detalhe").strip().splitlines()
     errors.append(f"{name}: {detail[-1] if detail else 'falhou'}")
 
-print(f"não consegui tirar o print (sessão: {session or 'desconhecida'}).", file=sys.stderr)
+if escolha != AUTO:
+    print(f"não consegui tirar o print com o {escolha}.", file=sys.stderr)
+else:
+    print(f"não consegui tirar o print (sessão: {session or 'desconhecida'}).", file=sys.stderr)
 if errors:
     print("Tentei:", file=sys.stderr)
     for e in errors:
         print(f"  {e}", file=sys.stderr)
-if wayland:
+if wayland and escolha == AUTO:
     print(
         "\nNo GNOME em Wayland o print silencioso é bloqueado por segurança.\n"
         "Pra um print sem nenhum aviso, na tela de login escolha 'Ubuntu on Xorg'\n"
