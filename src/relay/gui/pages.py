@@ -647,11 +647,46 @@ class CapturePage:
         actions.append(clear_btn)
         box.append(actions)
 
+        # A resposta do Claude vai numa caixa própria, separada do bloco juntado.
+        # É editável e troca a cada nova pergunta (não acumula). Começa escondida.
+        self.answer_view = Gtk.TextView()
+        self.answer_view.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
+        self.answer_view.set_editable(True)
+        self.answer_view.set_cursor_visible(True)
+        for side in ("top", "bottom", "left", "right"):
+            getattr(self.answer_view, f"set_{side}_margin")(8)
+        self.answer_buffer = self.answer_view.get_buffer()
+
+        ans_head = Gtk.Box(spacing=6)
+        ans_head.append(label("Resposta do Claude (dá pra editar)", "heading"))
+        ans_spacer = Gtk.Box()
+        ans_spacer.set_hexpand(True)
+        ans_head.append(ans_spacer)
+        self.copy_answer_btn = button("Copiar resposta", "flat")
+        self.copy_answer_btn.connect("clicked", self._copy_answer)
+        ans_head.append(self.copy_answer_btn)
+        ans_head.append(detox_button(self.answer_view, win))
+
+        ans_scroll = Gtk.ScrolledWindow()
+        ans_scroll.set_min_content_height(160)
+        ans_scroll.set_max_content_height(300)
+        ans_scroll.set_propagate_natural_height(True)
+        ans_scroll.set_child(self.answer_view)
+        ans_frame = Gtk.Frame()
+        ans_frame.set_child(ans_scroll)
+
+        box.append(ans_head)
+        box.append(ans_frame)
+        self._answer_widgets = (ans_head, ans_frame)
+        for w in self._answer_widgets:
+            w.set_visible(False)
+
         # Rolagem vertical por fora: a página inteira rola, então os botões lá
         # embaixo sempre dão pra alcançar, por mais texto que tenha no bloco.
         self.page = page(f"Ler tela · {machine}", scrolled(box, max_width=1200))
         self.vm.changed.connect(self._refresh)
         self.vm.block_changed.connect(self._block_changed)
+        self.vm.answer_changed.connect(self._answer_changed)
         if prefill is not None:
             try:
                 self.crop.set_image(prefill)
@@ -800,14 +835,35 @@ class CapturePage:
             self.machine, "autodigitar", {"texto": cifrado}, None, lambda ev: None, done, self.win.toast
         )
 
+    def _answer_changed(self, text: str) -> None:
+        """A VM mudou a resposta: mostra na caixa e revela a seção quando tem algo."""
+        self.answer_buffer.set_text(text)
+        if text.strip():
+            for w in self._answer_widgets:
+                w.set_visible(True)
+
+    def _copy_answer(self, *_):
+        text = self.answer_buffer.get_text(
+            self.answer_buffer.get_start_iter(), self.answer_buffer.get_end_iter(), False
+        )
+        if not text.strip():
+            self.win.toast("não tem resposta pra copiar")
+            return
+        copy_to_clipboard(self.page, text)
+        self.win.toast("Resposta copiada")
+
     def _ask_block(self) -> None:
-        """Manda o bloco inteiro (texto) pro Claude e junta a resposta no bloco."""
+        """Manda o bloco inteiro (texto) pro Claude e põe a resposta na caixa separada."""
         from ..core import vision
 
         bloco = self.vm.block
         if not bloco.strip():
             self.win.toast("o bloco está vazio")
             return
+        # Limpa a resposta anterior ao pedir uma nova (a caixa não acumula).
+        self.vm.set_answer("")
+        for w in self._answer_widgets:
+            w.set_visible(True)
         self.status.set_label("perguntando ao Claude sobre o bloco…")
         self._busy(True)
 
@@ -816,8 +872,8 @@ class CapturePage:
 
         def done(resposta: str) -> None:
             self._busy(False)
-            self.vm.append_text(resposta)
-            self.status.set_label("resposta do Claude juntada no bloco")
+            self.vm.set_answer(resposta)
+            self.status.set_label("resposta do Claude pronta na caixa de baixo")
 
         def fail(msg: str) -> None:
             self._busy(False)

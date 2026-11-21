@@ -705,11 +705,13 @@ class CaptureVM:
         self.service = service
         self.extractor = extractor  # (image_png, mode, question) -> texto
         self.block = ""
+        self.answer = ""  # resposta do Claude, numa caixa separada do bloco
         self.snippets = 0
         self.busy = False
         self.error = ""
         self.changed = Signal()
         self.block_changed = Signal()  # (texto do bloco)
+        self.answer_changed = Signal()  # (texto da resposta do Claude)
 
     def add_crop(self, image_png: bytes, mode: str = "ocr", question: str | None = None) -> None:
         if self.busy:
@@ -749,6 +751,15 @@ class CaptureVM:
     def set_block(self, text: str) -> None:
         """Deixa você editar o bloco à mão (a tela devolve o que você digitou)."""
         self.block = text
+
+    def set_answer(self, text: str) -> None:
+        """Põe a resposta do Claude na caixa separada, trocando a anterior.
+
+        Cada nova pergunta chama isto (com "" pra limpar antes, e depois com a
+        resposta), então a caixa nunca acumula respostas de perguntas antigas.
+        """
+        self.answer = text
+        self.answer_changed.emit(self.answer)
 
     def clear(self) -> None:
         self.block = ""
