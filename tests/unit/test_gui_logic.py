@@ -613,6 +613,26 @@ def test_capture_append_text_does_not_count_as_snippet(ctx):
     assert vm.block == "recorte\n\nresposta do claude"
 
 
+def test_capture_answer_is_separate_and_replaces(ctx):
+    from relay.gui.viewmodels import CaptureVM
+
+    _, _loop, service, _ = ctx
+    vm = CaptureVM(service, lambda img, mode, q: "x")
+    vm._append("texto juntado")
+    answers = []
+    vm.answer_changed.connect(answers.append)
+
+    vm.set_answer("primeira resposta")
+    assert vm.answer == "primeira resposta"
+    assert vm.block == "texto juntado"  # a resposta não entra no bloco
+    assert answers[-1] == "primeira resposta"
+
+    vm.set_answer("")  # pedir de novo limpa antes
+    vm.set_answer("segunda resposta")  # e a nova troca a anterior (não acumula)
+    assert vm.answer == "segunda resposta"
+    assert answers == ["primeira resposta", "", "segunda resposta"]
+
+
 def test_capture_question_mode_passes_question(ctx):
     from relay.gui.viewmodels import CaptureVM
 
