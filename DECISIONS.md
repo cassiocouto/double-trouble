@@ -813,3 +813,12 @@ bloco que dá pra mandar; na prática você nunca encosta. O limite só existe p
 matar um `tttttt` travado. A estimativa no toast virou legível (`~2min54s` em
 vez de `~174s`) e, se a conta chegar perto do teto, avisa pra mandar um bloco
 menor.
+
+**D114. No X11, as ferramentas de print silenciosas vêm primeiro.**
+O print voltou a piscar: no X11 o comando tentava o `gnome-shell` primeiro e o
+`gnome-screenshot` antes das silenciosas, e esses piscam a tela. Reordenamos:
+`scrot`, `maim`, `imagemagick` e `ffmpeg` (que pegam a tela em silêncio) vêm
+primeiro; `gnome-shell` e `gnome-screenshot` ficam como último recurso. Os dois
+entraram no `FLASHES`, então, se forem usados por falta de uma silenciosa, o
+comando avisa pra instalar o `scrot`. A saída do comando diz qual ferramenta
+usou ("print tirado com ..."), pra conferir.
