@@ -838,9 +838,11 @@ Antes a resposta do "Perguntar ao Claude" era grudada no mesmo bloco do texto
 juntado (OCR). Agora ela vai numa caixa à parte, "Resposta do Claude", editável
 e escondida até chegar a primeira resposta. Cada nova pergunta troca a resposta
 anterior (não acumula): o `_ask_block` chama `vm.set_answer("")` e depois
-`vm.set_answer(texto)`. A caixa tem "Copiar resposta" e "Detoxify" próprios; o
-bloco juntado segue com os botões dele. Na VM entrou `answer`/`set_answer` e o
-sinal `answer_changed`, espelhando o `block`/`block_changed`.
+`vm.set_answer(texto)`. A caixa tem "Copiar resposta", "Digitar em <máquina>" e
+"Detoxify" próprios (o `_autotype_text` virou genérico e serve o bloco ou a
+resposta); o bloco juntado segue com os botões dele. Na VM entrou
+`answer`/`set_answer` e o sinal `answer_changed`, espelhando o
+`block`/`block_changed`.
 
 **D116. Duas regras de detox que remontam o layout ficam desligadas por padrão.**
 No detoxify original todas as regras vêm ligadas, incluindo `merge_paragraphs`

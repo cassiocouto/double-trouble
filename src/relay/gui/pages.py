@@ -665,6 +665,10 @@ class CapturePage:
         self.copy_answer_btn = button("Copiar resposta", "flat")
         self.copy_answer_btn.connect("clicked", self._copy_answer)
         ans_head.append(self.copy_answer_btn)
+        self.type_answer_btn = button(f"Digitar em {machine}", "flat")
+        self.type_answer_btn.set_tooltip_text("Cifra a resposta e manda pra máquina digitar")
+        self.type_answer_btn.connect("clicked", lambda *_: self._autotype_answer())
+        ans_head.append(self.type_answer_btn)
         ans_head.append(detox_button(self.answer_view, win))
 
         ans_scroll = Gtk.ScrolledWindow()
@@ -803,30 +807,40 @@ class CapturePage:
         self.win.toast("Bloco copiado e começando um novo")
 
     def _autotype(self) -> None:
-        """Cifra o bloco e manda pra máquina autodigitar (comando 'autodigitar')."""
+        """Manda o bloco juntado pra máquina digitar."""
+        self._autotype_text(self.vm.block, what="o bloco")
+
+    def _autotype_answer(self) -> None:
+        """Manda a resposta do Claude pra máquina digitar."""
+        text = self.answer_buffer.get_text(
+            self.answer_buffer.get_start_iter(), self.answer_buffer.get_end_iter(), False
+        )
+        self._autotype_text(text, what="a resposta")
+
+    def _autotype_text(self, texto: str, *, what: str) -> None:
+        """Cifra o texto e manda pra máquina autodigitar (comando 'autodigitar')."""
         from ..core import autotype
 
-        bloco = self.vm.block
-        if not bloco.strip():
-            self.win.toast("o bloco está vazio")
+        if not texto.strip():
+            self.win.toast("não tem texto pra digitar")
             return
         try:
             cfg = autotype.load_settings()
-            cifrado = autotype.encrypt(bloco, cfg.senha)
+            cifrado = autotype.encrypt(texto, cfg.senha)
         except Exception as e:
             self.win.toast(str(e))
             return
         if len(cifrado) > MAX_MULTILINE:
-            self.win.toast(f"o bloco é grande demais (cifrado passa de {MAX_MULTILINE})")
+            self.win.toast(f"{what} ficou grande demais (cifrado passa de {MAX_MULTILINE})")
             return
-        eta = autotype.estimate_seconds(len(bloco), atraso=3, cps=cfg.cps)
-        aviso = " (pode estourar o tempo, mande um bloco menor)" if eta > autotype.COMMAND_TIMEOUT - 30 else ""
+        eta = autotype.estimate_seconds(len(texto), atraso=3, cps=cfg.cps)
+        aviso = " (pode estourar o tempo, mande um texto menor)" if eta > autotype.COMMAND_TIMEOUT - 30 else ""
         self.win.toast(f"mandando pra {self.machine} digitar, uns {autotype.format_eta(eta)}{aviso}")
 
         def done(outcome) -> None:
             r = outcome.result or {}
             if r.get("codigo") == 0:
-                self.win.toast(outcome.text_stdout.strip()[:140] or f"{self.machine} digitou o bloco")
+                self.win.toast(outcome.text_stdout.strip()[:140] or f"{self.machine} digitou {what}")
             else:
                 msg = outcome.text_stderr.strip() or r.get("erro") or f"código {r.get('codigo')}"
                 self.win.toast(f"não digitou: {msg[:140]}")
