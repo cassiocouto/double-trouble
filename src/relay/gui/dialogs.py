@@ -104,6 +104,7 @@ class PreferencesDialog:
         page.add(group)
 
         self._build_autotype_group(page)
+        self._build_screenshot_group(page)
         self.dialog.add(page)
 
     def _build_autotype_group(self, page) -> None:
@@ -134,6 +135,41 @@ class PreferencesDialog:
         save.connect("clicked", self._save_tttttt)
         group.add(save)
         page.add(group)
+
+    def _build_screenshot_group(self, page) -> None:
+        from ..core import screenshot
+
+        group = Adw.PreferencesGroup()
+        group.set_title("Captura de tela")
+        group.set_description(
+            "Qual programa a outra máquina usa pra tirar o print na tela 'Ler tela'. "
+            "'automático' tenta na ordem esperta (as silenciosas primeiro). A outra "
+            "máquina precisa ter a ferramenta escolhida instalada."
+        )
+        try:
+            cur = screenshot.load_settings()
+        except Exception:  # config quebrado: começa no automático
+            cur = screenshot.ScreenshotSettings()
+        self._shot_tool = Adw.ComboRow()
+        self._shot_tool.set_use_markup(False)
+        self._shot_tool.set_title("Ferramenta")
+        self._shot_tool.set_model(Gtk.StringList.new(screenshot.TOOLS))
+        self._shot_tool.set_selected(screenshot.TOOLS.index(cur.tool) if cur.tool in screenshot.TOOLS else 0)
+        self._shot_tool.connect("notify::selected", self._save_screenshot)  # salva ao trocar
+        group.add(self._shot_tool)
+        page.add(group)
+
+    def _save_screenshot(self, *_):
+        from ..core import screenshot
+
+        i = self._shot_tool.get_selected()
+        tool = screenshot.TOOLS[i] if 0 <= i < len(screenshot.TOOLS) else screenshot.AUTO
+        try:
+            screenshot.save_settings(screenshot.ScreenshotSettings(tool=tool))
+        except Exception as e:
+            self.toast(f"Não consegui salvar ({e})")
+            return
+        self.toast(f"Ferramenta de print: {tool}")
 
     def _save_claude(self, *_):
         from ..core import vision

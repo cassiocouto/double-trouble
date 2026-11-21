@@ -208,5 +208,5 @@ def test_screenshot_example_metadata():
     meta = commands.inspect("screenshot")
     assert meta.categoria == "Tela"
     assert meta.icone == "applets-screenshooter-symbolic"
-    assert [x.nome for x in (meta.parametros or [])] == ["cursor"]
+    assert [x.nome for x in (meta.parametros or [])] == ["cursor", "ferramenta"]
     assert meta.avisos == []
