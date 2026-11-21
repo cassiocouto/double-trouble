@@ -57,11 +57,12 @@ def gnome_shell() -> list[str]:
     ]
 
 
-# (nome, comando). Cada um escreve em shot.png.
-X11_METHODS = [
-    ("scrot", ["scrot", "-o"] + (["-p"] if cursor else []) + [str(shot)]),
-    ("maim", ["maim"] + ([] if cursor else ["--hidecursor"]) + [str(shot)]),
-    ("gnome-screenshot", ["gnome-screenshot"] + (["-p"] if cursor else []) + ["-f", str(shot)]),
+# (nome, comando). Cada um escreve em shot.png. As ferramentas que pegam a tela
+# em silêncio (sem piscar) vêm primeiro; gnome-shell e gnome-screenshot ficam por
+# último, porque piscam a tela ao salvar.
+X11_SILENT = [
+    ("scrot", ["scrot", "-o", *(["-p"] if cursor else []), str(shot)]),
+    ("maim", ["maim", *([] if cursor else ["--hidecursor"]), str(shot)]),
     ("imagemagick", ["import", "-window", "root", str(shot)]),
     (
         "ffmpeg",
@@ -80,16 +81,21 @@ X11_METHODS = [
         ],
     ),
 ]
+X11_FLASH = [
+    ("gnome-shell", gnome_shell()),  # só se nenhuma das silenciosas existir
+    ("gnome-screenshot", ["gnome-screenshot", *(["-p"] if cursor else []), "-f", str(shot)]),
+]
 WAYLAND_METHODS = [
     ("gnome-shell", gnome_shell()),  # bloqueado no GNOME novo, mas tenta
-    ("grim", ["grim"] + (["-c"] if cursor else []) + [str(shot)]),  # só compositores wlroots
+    ("grim", ["grim", *(["-c"] if cursor else []), str(shot)]),  # só compositores wlroots
 ]
 
-# No GNOME X11 a API do shell é o jeito mais limpo; senão, as ferramentas de X11.
-METHODS = WAYLAND_METHODS if wayland else [("gnome-shell", gnome_shell()), *X11_METHODS]
+# No X11, as silenciosas primeiro; as que piscam (gnome-shell, gnome-screenshot)
+# ficam como último recurso.
+METHODS = WAYLAND_METHODS if wayland else [*X11_SILENT, *X11_FLASH]
 
 
-FLASHES = {"gnome-screenshot"}  # pisca a tela ao salvar; scrot/maim/import não piscam
+FLASHES = {"gnome-screenshot", "gnome-shell"}  # podem piscar a tela; scrot/maim/import não piscam
 
 
 def png_size(path: Path) -> str:
